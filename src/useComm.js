@@ -24,6 +24,7 @@ const emptyLatest = {
   vbat: 0, maskPresent: false, sdOk: false,
   ppgRate: 0, baroRate: 0,
   ppgMask: 0, baroMask: 0, shtMask: 0, tmpMask: 0,
+  bleDrops: 0, bleDecim: 1,
 };
 
 export const useComm = () => {
@@ -44,6 +45,7 @@ export const useComm = () => {
   const [history, setHistory] = useState([]);
   const statusRef = useRef({});
   const recordedDataRef = useRef([]);
+  const lastDevTimeRef = useRef(null);
 
   const applyFilter = (point) => {
     if (!isFilteredRef.current) return point;
@@ -78,10 +80,23 @@ export const useComm = () => {
     if (type === TYPE_DATA) {
       const n = dv.getUint8(9);
       if (dv.byteLength < 204) return true; // truncated: drop
-      const now = Date.now();
+      // Device-timebase plotting: the frame carries the device's
+      // millisecond uptime — jitter-free x values regardless of BLE
+      // burstiness, no receive-side smoothing heuristics needed.
+      const devT = dv.getUint32(4, true);
+      const wallT = Date.now();
       const points = [];
+      // Real losses (shed frames) appear as device-time jumps; insert
+      // a null point so charts BREAK the trace instead of bridging.
+      if (lastDevTimeRef.current !== null && devT - lastDevTimeRef.current > 200) {
+        const gap = { timestamp: lastDevTimeRef.current + 1 };
+        for (const k2 of WAVE_KEYS) gap[k2] = null;
+        for (let b = 1; b <= 4; b++) gap[`p${b}`] = null;
+        points.push(gap);
+      }
+      lastDevTimeRef.current = devT;
       for (let k = 0; k < n; k++) {
-        const pt = { timestamp: now - (n - 1 - k) * TICK_MS };
+        const pt = { timestamp: devT - (n - 1 - k) * TICK_MS, wallT };
         // PPG block: sensor-major, 4 samples x (r,i,g) u24
         for (let s = 0; s < 4; s++) {
           const base = 12 + s * (n * 9) + k * 9;
@@ -103,6 +118,7 @@ export const useComm = () => {
     if (type === TYPE_STATUS) {
       if (dv.byteLength < 43) return true;
       const flags = dv.getUint8(36);
+      const hasLink = dv.byteLength >= 45;
       statusRef.current = {
         sht1t: dv.getInt16(8, true) / 100,  sht1h: dv.getUint16(10, true) / 100,
         sht2t: dv.getInt16(12, true) / 100, sht2h: dv.getUint16(14, true) / 100,
@@ -119,6 +135,8 @@ export const useComm = () => {
         baroMask: dv.getUint8(40),
         shtMask: dv.getUint8(41),
         tmpMask: dv.getUint8(42),
+        bleDrops: hasLink ? dv.getUint8(43) : 0,
+        bleDecim: hasLink ? dv.getUint8(44) : 1,
       };
       setLatestData(prev => ({ ...prev, ...statusRef.current }));
       return true;
@@ -235,7 +253,7 @@ export const useComm = () => {
 
   const exportToCsv = () => {
     if (recordedDataRef.current.length === 0) return;
-    const cols = ['timestamp',
+    const cols = ['timestamp','wallT',
       'r1','i1','g1','r2','i2','g2','r3','i3','g3','r4','i4','g4',
       'p1','p2','p3','p4',
       'sht1t','sht1h','sht2t','sht2h','sht3t','sht3h',

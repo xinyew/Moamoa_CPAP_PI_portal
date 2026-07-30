@@ -93,7 +93,11 @@ const Dashboard = () => {
           <h1>KMM PMask Portal</h1>
           <p style={{ color: 'var(--text-dim)', fontSize: '0.875rem', margin: '4px 0 0 0' }}>
             4× PPG @ {latestData.ppgRate || 0}Hz · 4× Baro @ {latestData.baroRate || 0}Hz ·
-            3× SHT40 · 3× TMP117 · mask {latestData.maskPresent ? 'attached' : '—'}
+            3× SHT40 · 3× TMP117 · mask {latestData.maskPresent ? 'attached' : '—'} ·
+            link {latestData.bleDecim > 1
+              ? <span style={{ color: 'var(--accent-amber)' }}>paced ×{latestData.bleDecim}</span>
+              : 'full rate'}{latestData.bleDrops > 0 &&
+              <span style={{ color: 'var(--accent-red)' }}> ({latestData.bleDrops} drops/s)</span>}
           </p>
         </div>
 
