@@ -9,17 +9,16 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
-import { Activity, Thermometer, Droplets, Zap, Download, Play, Square, Bluetooth, Cable, Gauge, LayoutGrid, Layers } from 'lucide-react';
+import { Activity, Thermometer, Droplets, BatteryMedium, Download, Play, Square, Bluetooth, Cable, Gauge, LayoutGrid, Layers } from 'lucide-react';
 import { useComm } from './useComm';
 
-// Line colors per sensor instance (1..3 / 1..6)
-const PPG_RED_COLORS   = ['#fca5a5', '#ef4444', '#991b1b'];
-const PPG_IR_COLORS    = ['#c4b5fd', '#8b5cf6', '#5b21b6'];
-const PPG_GREEN_COLORS = ['#86efac', '#22c55e', '#15803d'];
-const FORCE_COLORS     = ['#d8b4fe', '#a855f7', '#6b21a8'];
-const BARO_COLORS      = ['#fde68a', '#fcd34d', '#fbbf24', '#f59e0b', '#d97706', '#b45309'];
+// Line colors per sensor site (1..4)
+const PPG_RED_COLORS   = ['#fecaca', '#f87171', '#dc2626', '#7f1d1d'];
+const PPG_IR_COLORS    = ['#ddd6fe', '#a78bfa', '#7c3aed', '#4c1d95'];
+const PPG_GREEN_COLORS = ['#bbf7d0', '#4ade80', '#16a34a', '#14532d'];
+const BARO_COLORS      = ['#fde68a', '#fbbf24', '#d97706', '#92400e'];
 
-const fmtRes = (r) => (r === undefined || r < 0) ? '--' : (r / 1000).toFixed(1);
+const fmt1 = (v) => (v === undefined ? '--' : (+v).toFixed(1));
 
 // Single-signal card used by split view
 const MiniChart = ({ title, dataKey, color, history, latest, unit }) => (
@@ -58,8 +57,8 @@ const Dashboard = () => {
 
   const [splitView, setSplitView] = useState(false);
 
-  const livePpg = [0, 1, 2].filter(s => (latestData.ppgMask & (1 << s)) !== 0);
-  const liveBaro = [0, 1, 2, 3, 4, 5].filter(b => (latestData.baroMask & (1 << b)) !== 0);
+  const livePpg = [0, 1, 2, 3].filter(s => (latestData.ppgMask & (1 << s)) !== 0);
+  const liveBaro = [0, 1, 2, 3].filter(b => (latestData.baroMask & (1 << b)) !== 0);
 
   const ppgOverlayChart = (title, color, keys, colors, latestKey) => (
     <div className="glass-card ppg-sub-card" key={title}>
@@ -72,10 +71,11 @@ const Dashboard = () => {
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
           <XAxis dataKey="timestamp" hide />
           <YAxis stroke="var(--text-dim)" fontSize={10} domain={['auto', 'auto']} hide />
+          <Legend />
           {keys.map((k, idx) => (
             (latestData.ppgMask & (1 << idx)) !== 0 &&
             <Line key={k} type="monotone" dataKey={k} stroke={colors[idx]}
-                  strokeWidth={2} dot={false} name={`S${idx + 1}`} isAnimationActive={false} />
+                  strokeWidth={2} dot={false} name={`Site ${idx + 1}`} isAnimationActive={false} />
           ))}
         </LineChart>
       </ResponsiveContainer>
@@ -90,9 +90,10 @@ const Dashboard = () => {
       {/* Header Section */}
       <header className="glass-card header-card">
         <div>
-          <h1>CPAP Pressure Injury Portal</h1>
+          <h1>KMM PMask Portal</h1>
           <p style={{ color: 'var(--text-dim)', fontSize: '0.875rem', margin: '4px 0 0 0' }}>
-            3x PPG @ {latestData.ppgRate || 0}Hz · FSR @ {latestData.fsrRate || 0}Hz · 6x Baro @ {latestData.baroRate || 0}Hz
+            4× PPG @ {latestData.ppgRate || 0}Hz · 4× Baro @ {latestData.baroRate || 0}Hz ·
+            3× SHT40 · 3× TMP117 · mask {latestData.maskPresent ? 'attached' : '—'}
           </p>
         </div>
 
@@ -185,56 +186,55 @@ const Dashboard = () => {
         </div>
       </header>
 
-      {/* Environment Telemetry Card */}
+      {/* Environment / status telemetry */}
       <div className="glass-card env-card">
         <div className="telemetry-item">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
             <Thermometer color="var(--accent-blue)" size={16} />
-            <span className="telemetry-label">Temp</span>
+            <span className="telemetry-label">Air °C (1/2/3)</span>
           </div>
-          <div className="telemetry-value" style={{ fontSize: '1.75rem' }}>
-            {(latestData.t || 0).toFixed(1)}<span className="telemetry-unit">°C</span>
+          <div className="telemetry-value" style={{ fontSize: '1.25rem' }}>
+            {fmt1(latestData.sht1t)}/{fmt1(latestData.sht2t)}/{fmt1(latestData.sht3t)}
           </div>
         </div>
 
         <div className="telemetry-item">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
             <Droplets color="var(--accent-blue)" size={16} />
-            <span className="telemetry-label">Hum</span>
+            <span className="telemetry-label">RH % (1/2/3)</span>
           </div>
-          <div className="telemetry-value" style={{ fontSize: '1.75rem' }}>
-            {(latestData.h || 0).toFixed(1)}<span className="telemetry-unit">%</span>
+          <div className="telemetry-value" style={{ fontSize: '1.25rem' }}>
+            {fmt1(latestData.sht1h)}/{fmt1(latestData.sht2h)}/{fmt1(latestData.sht3h)}
           </div>
         </div>
 
         <div className="telemetry-item">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
             <Thermometer color="var(--accent-amber)" size={16} />
-            <span className="telemetry-label">P-Temp</span>
+            <span className="telemetry-label">Skin °C (1/2/3)</span>
           </div>
-          <div className="telemetry-value" style={{ fontSize: '1.75rem' }}>
-            {(latestData.pt || 0).toFixed(1)}<span className="telemetry-unit">°C</span>
+          <div className="telemetry-value" style={{ fontSize: '1.25rem' }}>
+            {fmt1(latestData.tmp1)}/{fmt1(latestData.tmp2)}/{fmt1(latestData.tmp3)}
           </div>
         </div>
 
         <div className="telemetry-item" style={{ borderLeft: '1px solid var(--border-glass)', paddingLeft: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-            <Activity color="var(--accent-green)" size={16} />
-            <span className="telemetry-label">R-FSR 1/2/3</span>
+            <BatteryMedium color="var(--accent-green)" size={16} />
+            <span className="telemetry-label">Battery</span>
           </div>
-          <div className="telemetry-value" style={{ fontSize: '1.25rem' }}>
-            {fmtRes(latestData.res1)}/{fmtRes(latestData.res2)}/{fmtRes(latestData.res3)}
-            <span className="telemetry-unit">kΩ</span>
+          <div className="telemetry-value" style={{ fontSize: '1.75rem' }}>
+            {((latestData.vbat || 0) / 1000).toFixed(2)}<span className="telemetry-unit">V</span>
           </div>
         </div>
 
         <div className="telemetry-item">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-            <Zap color="var(--accent-yellow)" size={16} />
-            <span className="telemetry-label">Vref</span>
+            <Gauge color="var(--accent-yellow)" size={16} />
+            <span className="telemetry-label">SD</span>
           </div>
           <div className="telemetry-value" style={{ fontSize: '1.75rem' }}>
-            {latestData.v || 0}<span className="telemetry-unit">mV</span>
+            {latestData.sdOk ? 'OK' : '--'}
           </div>
         </div>
       </div>
@@ -242,11 +242,6 @@ const Dashboard = () => {
       {splitView ? (
         <>
           {/* Split view: one card per live signal */}
-          {[0, 1, 2].map(i => (
-            <MiniChart key={`f${i + 1}`} title={`FSR ${i + 1}`} dataKey={`f${i + 1}`}
-                       color={FORCE_COLORS[i]} history={history}
-                       latest={latestData[`f${i + 1}`] || 0} unit="mV" />
-          ))}
           {liveBaro.map(b => (
             <MiniChart key={`p${b + 1}`} title={`Pressure ${b + 1}`} dataKey={`p${b + 1}`}
                        color={BARO_COLORS[b]} history={history}
@@ -271,31 +266,8 @@ const Dashboard = () => {
           {/* Overlay view: grouped multi-line charts */}
           <div className="glass-card force-card">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-              <Zap color="var(--accent-violet)" size={20} />
-              <h2>Force Sensors (ESS102 x3)</h2>
-            </div>
-            <ResponsiveContainer width="100%" height="80%">
-              <LineChart data={history}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="timestamp" hide />
-                <YAxis stroke="var(--text-dim)" fontSize={12} domain={['auto', 'auto']} label={{ value: 'mV', angle: -90, position: 'insideLeft', fill: 'var(--text-dim)' }} />
-                <Tooltip
-                  contentStyle={{ background: '#1e293b', border: '1px solid var(--border-glass)', borderRadius: '8px' }}
-                  labelStyle={{ display: 'none' }}
-                />
-                <Legend />
-                {['f1', 'f2', 'f3'].map((k, idx) => (
-                  <Line key={k} type="monotone" dataKey={k} stroke={FORCE_COLORS[idx]}
-                        strokeWidth={2} dot={false} name={`FSR ${idx + 1} (mV)`} isAnimationActive={false} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="glass-card force-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
               <Gauge color="var(--accent-amber)" size={20} />
-              <h2>Contact Pressure (MS5611 x6)</h2>
+              <h2>Contact Pressure (MS5611 ×4)</h2>
             </div>
             <ResponsiveContainer width="100%" height="80%">
               <LineChart data={history}>
@@ -309,15 +281,15 @@ const Dashboard = () => {
                 <Legend />
                 {liveBaro.map((b) => (
                   <Line key={b} type="monotone" dataKey={`p${b + 1}`} stroke={BARO_COLORS[b]}
-                        strokeWidth={2} dot={false} name={`P${b + 1}`} isAnimationActive={false} />
+                        strokeWidth={2} dot={false} name={`Site ${b + 1}`} isAnimationActive={false} />
                 ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
 
-          {ppgOverlayChart('PPG Red (x3)', 'var(--accent-red)', ['r1', 'r2', 'r3'], PPG_RED_COLORS, 'r2')}
-          {ppgOverlayChart('PPG IR (x3)', 'var(--accent-violet)', ['i1', 'i2', 'i3'], PPG_IR_COLORS, 'i2')}
-          {ppgOverlayChart('PPG Green (x3)', 'var(--accent-green)', ['g1', 'g2', 'g3'], PPG_GREEN_COLORS, 'g2')}
+          {ppgOverlayChart('PPG Red (×4)', 'var(--accent-red)', ['r1', 'r2', 'r3', 'r4'], PPG_RED_COLORS, 'r1')}
+          {ppgOverlayChart('PPG IR (×4)', 'var(--accent-violet)', ['i1', 'i2', 'i3', 'i4'], PPG_IR_COLORS, 'i1')}
+          {ppgOverlayChart('PPG Green (×4)', 'var(--accent-green)', ['g1', 'g2', 'g3', 'g4'], PPG_GREEN_COLORS, 'g1')}
         </>
       )}
     </div>
