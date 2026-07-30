@@ -1,0 +1,8 @@
+{
+  "appId": "edu.gatech.kmm.pmask",
+  "appName": "KMM PMask Portal",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  }
+}
