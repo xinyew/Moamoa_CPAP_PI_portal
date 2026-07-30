@@ -5,11 +5,13 @@ const NUS_TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 const NUS_RX_CHARACTERISTIC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const RTT_BRIDGE_URL = 'ws://localhost:8765'; // scripts/rtt_bridge.py
 
-// Binary protocol v2 — must match firmware src/comm/comm_protocol.h
-// (kmm-pmask 4-site topology: 4x PPG, 4x baro, 3x SHT40, 3x TMP117)
+// Binary protocol v2 — must match Moamoa_CPAP_PI_firmware
+// src/comm/comm_protocol.h (kmm-pmask 4-site topology:
+// 4x PPG, 4x baro, 3x SHT40, 3x TMP117). See README "BLE Interface
+// Protocol" for the verified frame layouts.
 const MAGIC = 0xC9A5;
 const TYPE_DATA = 0x11;   // 204 B
-const TYPE_STATUS = 0x12; // 43 B
+const TYPE_STATUS = 0x12; // 45 B (43 B accepted: older build w/o link bytes)
 const TICK_MS = 10;
 
 const WAVE_KEYS = ['r1','i1','g1','r2','i2','g2','r3','i3','g3','r4','i4','g4'];
