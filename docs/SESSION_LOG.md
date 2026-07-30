@@ -153,10 +153,28 @@ or registry changes — future sessions must set JAVA_HOME explicitly):
 Build verified: `gradlew.bat assembleDebug` → BUILD SUCCESSFUL →
 `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-Device install: Samsung tablet detected over USB as `R52Y20DR3JF` but
-`adb` reported **unauthorized** — waiting for the user to tap "Allow USB
-debugging" on the tablet. Install command (also in ANDROID.md):
-`adb install -r android\app\build\outputs\apk\debug\app-debug.apk`.
+Device install + on-device test (PASSED, 2026-07-30 ~17:23):
+- Samsung tablet SM-X820, serial `R52Y20DR3JF`. First `adb` contact was
+  "unauthorized"; after the user authorized USB debugging (an
+  `adb kill-server`/restart re-triggered the prompt), `adb install -r`
+  succeeded.
+- Verified via adb screenshots, driving the UI with `adb shell input tap`:
+  1. App launches; dashboard identical to web portal; RTT toggle
+     correctly absent (native build).
+  2. Tapping "+ Add Board" triggered the Android "Nearby devices"
+     runtime permission, then the plugin's scan dialog.
+  3. Scanner listed the real board: `[E8:F8:35:BC:56:37]
+     KMM_PMask_Control` (NUS service UUID filter works).
+  4. Selecting it connected and STREAMED LIVE: header showed
+     "4x PPG @ 96Hz, 4x Baro @ 48Hz, mask attached, link full rate",
+     LIVE badge, board tab "KMM_PMask_Control 1/10 boards", real
+     telemetry (air 24.7/24.2/24.6 C, RH 42.3/43.6/41.3 %, skin
+     24.3/24.0/23.8 C, vbat 3.67 V), and the 4-site contact-pressure
+     chart plotting ~979 mbar traces. So the 204 B v2 frames arrive
+     intact through the native BLE plugin (MTU OK) and the shared
+     parser renders them.
+- Not yet exercised on-device: CSV export via share sheet, multi-board
+  with >1 physical board, JSON debug mode.
 
 See `ANDROID.md` (on the branch) for the full build/install guide.
 
@@ -172,9 +190,9 @@ See `ANDROID.md` (on the branch) for the full build/install guide.
 
 ### Open items / notes for the next session
 
-- Tablet USB-debugging authorization was pending at session end; once
-  allowed, run the adb install command above. `adb devices` must show
-  `device`, not `unauthorized`.
+- On-device smoke test PASSED (live board streaming; see Part 3). Still
+  untested on the tablet: CSV export/share sheet, >1 simultaneous
+  physical board, JSON debug mode.
 - The Android branch intentionally does NOT merge back to `main` — the
   web portal stays Capacitor-free. If web-portal fixes land on `main`,
   rebase/merge `main` into `android-tablet-app` (there should be no
