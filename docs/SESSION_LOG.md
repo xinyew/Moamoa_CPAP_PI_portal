@@ -112,23 +112,79 @@ Implementation (done, commit on `main`):
 
 ### Part 3 — Android tablet app (branch `android-tablet-app`)
 
-Plan (as approved by user):
-- Capacitor 6 project wrapping the same Vite/React build.
-- `@capacitor-community/bluetooth-le` replaces Web Bluetooth via a small
-  transport adapter so `useComm` logic (frame parsing, history, CSV) is
-  shared, not forked.
-- No RTT mode in the app (user said not needed): the RTT/BLE toggle is
-  hidden when running natively.
-- CSV export uses Capacitor Filesystem/Share instead of anchor-download.
-- Target: Samsung Android tablet (landscape), minSdk per plugin
-  requirements (BLE needs Android 6+; runtime permissions for
-  BLUETOOTH_SCAN/BLUETOOTH_CONNECT on Android 12+).
+Implemented on branch `android-tablet-app` (branched from `main` after the
+multi-board commit, so the app has 10-board support too):
 
-(Implementation details appended below as commits land.)
+- Capacitor 6 (`@capacitor/core|cli|android@6`) +
+  `@capacitor-community/bluetooth-le@6.1.0`, `@capacitor/filesystem@6`,
+  `@capacitor/share@6`. `capacitor.config.json`: appId
+  `edu.gatech.kmm.pmask`, appName "KMM PMask Portal", webDir `dist`.
+- `npx cap add android` generated the `android/` Gradle project
+  (committed; template .gitignore excludes build outputs + copied web
+  assets). Gradle 8.2.1, AGP per Capacitor 6, compileSdk 34, minSdk 22.
+- Manifest permissions added: BLUETOOTH_SCAN (neverForLocation) +
+  BLUETOOTH_CONNECT (Android 12+), legacy BLUETOOTH/BLUETOOTH_ADMIN/
+  ACCESS_FINE_LOCATION capped at maxSdkVersion 30, `bluetooth_le`
+  hardware feature required.
+- New `src/bleTransport.js` — the ONLY platform-specific file:
+  `requestAndConnect({onData, onDisconnect})` → `{id, name, disconnect}`.
+  Web impl = Web Bluetooth (name prefixes KMM/CPAP); native impl =
+  BleClient with a scan filter on the NUS service UUID (the boards
+  advertise it). Both deliver DataView notifications, both write 'B'
+  (binary mode) to NUS RX on connect. Native plugin requests MTU 512 →
+  board grants 247 → 204 B frames fit one notification.
+  Also `saveCsv()` (web: anchor download; native: Documents via
+  Filesystem) and `shareFiles()` (native share sheet).
+- `useComm.js` refactored to use the transport (uniform `store.conn`
+  handle); CSV filenames now timestamped; on native, `addBoard` always
+  uses BLE and Dashboard hides the RTT toggle (`isNative` export).
+- No RTT in the app per user instruction — web portal keeps it.
+
+Toolchain set up on this PC (nothing was installed system-wide; no PATH
+or registry changes — future sessions must set JAVA_HOME explicitly):
+- Portable Temurin JDK 17.0.20 at `%LOCALAPPDATA%\Android\jdk\jdk-17.0.20+8`.
+- Android SDK at `%LOCALAPPDATA%\Android\Sdk` (cmdline-tools "latest",
+  platform-tools/adb, platforms;android-34, build-tools;34.0.0).
+  License acceptance: sdkmanager --licenses could not read piped input,
+  so the standard license hash files were written to `Sdk\licenses\`.
+- `android/local.properties` (not committed) has
+  `sdk.dir=C:/Users/xwang3239/AppData/Local/Android/Sdk`.
+
+Build verified: `gradlew.bat assembleDebug` → BUILD SUCCESSFUL →
+`android/app/build/outputs/apk/debug/app-debug.apk`.
+
+Device install: Samsung tablet detected over USB as `R52Y20DR3JF` but
+`adb` reported **unauthorized** — waiting for the user to tap "Allow USB
+debugging" on the tablet. Install command (also in ANDROID.md):
+`adb install -r android\app\build\outputs\apk\debug\app-debug.apk`.
+
+See `ANDROID.md` (on the branch) for the full build/install guide.
 
 ### Commits this session
 
 (appended as they are made)
 
 - `main` b94f2bb: "docs: verified BLE v2 protocol vs Moamoa firmware; fix stale refs"
-- `main`: "feat: connect up to 10 boards concurrently with board tabs"
+- `main` 919aba1: "feat: connect up to 10 boards concurrently with board tabs"
+- `android-tablet-app` c1e13d3: "chore(android): Capacitor 6 scaffold for the Samsung tablet app"
+- `android-tablet-app` 2d271f9: "feat(android): platform BLE transport adapter; app is BLE-only"
+- `android-tablet-app`: "docs(android): build/install guide; session log for APK build + toolchain"
+
+### Open items / notes for the next session
+
+- Tablet USB-debugging authorization was pending at session end; once
+  allowed, run the adb install command above. `adb devices` must show
+  `device`, not `unauthorized`.
+- The Android branch intentionally does NOT merge back to `main` — the
+  web portal stays Capacitor-free. If web-portal fixes land on `main`,
+  rebase/merge `main` into `android-tablet-app` (there should be no
+  conflicts outside package.json/package-lock.json).
+- Web `useComm`/`Dashboard`/`bleTransport` changes on the branch are a
+  superset of `main`'s multi-board code (main still has the pre-adapter
+  in-hook Web Bluetooth code). If you want the adapter refactor on the
+  web portal too, cherry-pick 2d271f9's src/ changes onto main minus the
+  Capacitor imports — they are dynamic imports, so the web build works
+  either way (vite code-splits them; verified in the branch build).
+- ESLint has pre-existing errors (react/prop-types, one empty catch);
+  `npm run build` is the working verification gate.
+- 17 npm audit findings predate this session (dev-dependency chain).
