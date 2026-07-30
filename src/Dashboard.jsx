@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { Activity, Thermometer, Droplets, BatteryMedium, Download, Play, Square, Bluetooth, Cable, Gauge, LayoutGrid, Layers } from 'lucide-react';
 import { useComm } from './useComm';
+import { isNative } from './bleTransport';
 
 // Line colors per sensor site (1..4)
 const PPG_RED_COLORS   = ['#fecaca', '#f87171', '#dc2626', '#7f1d1d'];
@@ -106,7 +107,9 @@ const Dashboard = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {boards.length < maxBoards && (
+          {/* Interface toggle — the native tablet app is BLE-only
+              (RTT needs the localhost J-Link bridge on a PC) */}
+          {!isNative && boards.length < maxBoards && (
             <div style={{
               display: 'flex',
               background: 'rgba(255,255,255,0.05)',

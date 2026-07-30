@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
+import { isNative, requestAndConnect, saveCsv, shareFiles } from './bleTransport';
 
-const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const NUS_TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
-const NUS_RX_CHARACTERISTIC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const RTT_BRIDGE_URL = 'ws://localhost:8765'; // scripts/rtt_bridge.py
 
 // Binary protocol v2 — must match Moamoa_CPAP_PI_firmware
@@ -65,7 +63,7 @@ export const useComm = () => {
   const makeStore = (id, name, kind) => ({
     id, name, kind,
     connected: false,
-    device: null,       // BLE only
+    conn: null,         // BLE only: transport handle from bleTransport
     ws: null,           // RTT only
     history: [],
     latest: { ...emptyLatest },
@@ -259,55 +257,42 @@ export const useComm = () => {
 
   const addBluetoothBoard = async () => {
     try {
-      // The Web Bluetooth chooser picks ONE device per call — click
+      // The device picker returns ONE device per call — click
       // "Add Board" once per board, up to MAX_BOARDS.
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [{ namePrefix: 'KMM' }, { namePrefix: 'CPAP' }],
-        optionalServices: [NUS_SERVICE_UUID]
+      const decoder = new TextDecoder();
+      let store = null; // assigned right after connect; guards the callbacks
+
+      const conn = await requestAndConnect({
+        onData: (value) => {
+          if (!store) return;
+          if (processBinaryFrame(store, value)) return;
+          store.textBuffer += decoder.decode(value);
+          const lines = store.textBuffer.split('\n');
+          store.textBuffer = lines.pop();
+          for (let line of lines) processDataLine(store, line);
+        },
+        onDisconnect: () => {
+          if (!store) return;
+          store.connected = false;
+          syncRoster();
+        },
       });
 
-      const id = device.id || `ble-${storesRef.current.size}-${Date.now()}`;
-      const existing = storesRef.current.get(id);
+      const existing = storesRef.current.get(conn.id);
       if (existing && existing.connected) {
-        activateBoard(id); // already streaming — just show it
+        conn.disconnect(); // duplicate pick of a live board — just show it
+        activateBoard(conn.id);
         return;
       }
 
-      const server = await device.gatt.connect();
-      const service = await server.getPrimaryService(NUS_SERVICE_UUID);
-      const characteristic = await service.getCharacteristic(NUS_TX_CHARACTERISTIC_UUID);
-
       // Re-use the old store on reconnect so history/recording continue
-      const store = existing || makeStore(id, device.name || `Board ${storesRef.current.size + 1}`, 'ble');
-      store.device = device;
+      store = existing || makeStore(conn.id, conn.name || `Board ${storesRef.current.size + 1}`, 'ble');
+      store.conn = conn;
       store.connected = true;
 
-      await characteristic.startNotifications();
-      const decoder = new TextDecoder();
-
-      characteristic.addEventListener('characteristicvaluechanged', (event) => {
-        const value = event.target.value;
-        if (processBinaryFrame(store, value)) return;
-        store.textBuffer += decoder.decode(value);
-        const lines = store.textBuffer.split('\n');
-        store.textBuffer = lines.pop();
-        for (let line of lines) processDataLine(store, line);
-      });
-
-      // Ensure the firmware is in binary mode
-      try {
-        const rx = await service.getCharacteristic(NUS_RX_CHARACTERISTIC_UUID);
-        await rx.writeValueWithoutResponse(new Uint8Array([0x42])); // 'B'
-      } catch (e) { /* RX optional */ }
-
-      device.addEventListener('gattserverdisconnected', () => {
-        store.connected = false;
-        syncRoster();
-      });
-
-      storesRef.current.set(id, store);
+      storesRef.current.set(conn.id, store);
       syncRoster();
-      activateBoard(id);
+      activateBoard(conn.id);
     } catch (err) {
       console.error('Bluetooth Error:', err);
     }
@@ -318,7 +303,8 @@ export const useComm = () => {
       alert(`Limit reached: up to ${MAX_BOARDS} boards per portal.`);
       return;
     }
-    if (commMode === 'rtt') addRttBoard();
+    // RTT needs the localhost bridge — web portal only, not the app
+    if (commMode === 'rtt' && !isNative) addRttBoard();
     else addBluetoothBoard();
   };
 
@@ -326,9 +312,7 @@ export const useComm = () => {
     const store = storesRef.current.get(id);
     if (!store) return;
     try {
-      if (store.kind === 'ble' && store.device?.gatt?.connected) {
-        store.device.gatt.disconnect();
-      }
+      if (store.kind === 'ble' && store.conn) store.conn.disconnect();
       if (store.kind === 'rtt' && store.ws) store.ws.close();
     } catch (e) { /* already down */ }
     storesRef.current.delete(id);
@@ -360,27 +344,31 @@ export const useComm = () => {
     isFilteredRef.current = nextState;
   };
 
-  // One CSV per board (the browser may ask to allow multiple downloads)
-  const exportAllCsv = () => {
+  // One CSV per board. Web: browser downloads (may prompt to allow
+  // multiple). Native app: written to Documents, then the share sheet.
+  const exportAllCsv = async () => {
     const cols = ['timestamp','wallT',
       'r1','i1','g1','r2','i2','g2','r3','i3','g3','r4','i4','g4',
       'p1','p2','p3','p4',
       'sht1t','sht1h','sht2t','sht2h','sht3t','sht3h',
       'tmp1','tmp2','tmp3','vbat'];
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const uris = [];
     for (const store of storesRef.current.values()) {
       if (store.recorded.length === 0) continue;
       const headers = cols.join(',') + '\n';
       const csvContent = store.recorded.map(d =>
         cols.map(c => d[c] ?? '').join(',')
       ).join('\n');
-      const blob = new Blob([headers + csvContent], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `KMM_PMask_${store.name.replace(/[^\w-]+/g, '_')}.csv`;
-      a.click();
-      window.URL.revokeObjectURL(url);
+      const name = `KMM_PMask_${store.name.replace(/[^\w-]+/g, '_')}_${stamp}.csv`;
+      try {
+        const uri = await saveCsv(name, headers + csvContent);
+        if (uri) uris.push(uri);
+      } catch (e) {
+        console.error('CSV save failed:', e);
+      }
     }
+    await shareFiles(uris);
   };
 
   const activeBoard = boards.find(b => b.id === activeBoardId) || null;
