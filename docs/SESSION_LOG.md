@@ -79,7 +79,36 @@ Design (as approved by user):
   `KMM_PMask_<name>.csv`.
 - Filter toggle is global (applies to all boards) — kept simple on purpose.
 
-(Implementation details appended below as commits land.)
+Implementation (done, commit on `main`):
+- `src/useComm.js` fully refactored around per-board mutable stores in a
+  ref (`storesRef: Map<id, store>`). Each store owns: `history` (300 pts),
+  `latest`, `status`, `filterState` (EMA), `recorded` (CSV rows),
+  `lastDevTime` (loss-break detection), `textBuffer` (JSON debug mode),
+  plus the `device` (BLE) or `ws` (RTT) handle.
+- Ingest happens entirely in refs; React re-renders come from a 40 ms
+  snapshot interval that copies only the ACTIVE board's history/latest
+  into state. 10 boards x 25 frames/s therefore never means 250 React
+  renders/s — render load is flat regardless of board count.
+- `addBoard()`: BLE path calls `requestDevice` once per click (the Web
+  Bluetooth chooser can only return one device), keyed by `device.id`
+  (stable per origin). Re-picking an already-connected board just
+  activates its tab; re-picking a disconnected one reuses its store so
+  history/recording continue. RTT path is a singleton board id `'rtt'`.
+- `disconnectBoard(id)` closes GATT/WS and removes the tab; on
+  `gattserverdisconnected` the tab stays (red dot) so data isn't lost.
+- Recording is global; stop downloads one CSV per board:
+  `KMM_PMask_<name>.csv` (browser may prompt to allow multiple downloads).
+- Filter toggle is global; EMA state is per board. Filter now also resets
+  its state across loss-break null points (small correctness improvement).
+- `src/Dashboard.jsx`: tab bar under the header (`.board-tabs` in
+  `index.css`) with connection dot + kind icon + name and an "N/10
+  boards" counter; "+ Add Board" replaces "Connect"; "Disconnect" acts on
+  the active board only; the RTT/BLE toggle picks the interface for the
+  NEXT added board and hides at 10 boards.
+- The old `disconnect()` = `window.location.reload()` is gone.
+- Verified: `npm run build` passes. ESLint reports only pre-existing
+  issues (react/prop-types in App/Dashboard, one empty catch) that also
+  existed before this session.
 
 ### Part 3 — Android tablet app (branch `android-tablet-app`)
 
@@ -101,4 +130,5 @@ Plan (as approved by user):
 
 (appended as they are made)
 
-- `main`: "docs: verified BLE v2 protocol vs Moamoa firmware; fix stale refs"
+- `main` b94f2bb: "docs: verified BLE v2 protocol vs Moamoa firmware; fix stale refs"
+- `main`: "feat: connect up to 10 boards concurrently with board tabs"

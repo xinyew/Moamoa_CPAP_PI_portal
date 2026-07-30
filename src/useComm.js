@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const NUS_TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
@@ -17,6 +17,11 @@ const TICK_MS = 10;
 const WAVE_KEYS = ['r1','i1','g1','r2','i2','g2','r3','i3','g3','r4','i4','g4'];
 const HISTORY_LEN = 300;
 
+// Each board holds one BLE connection (CONFIG_BT_MAX_CONN=1 on the
+// board side); the portal is the central and can hold up to 10.
+export const MAX_BOARDS = 10;
+const SNAPSHOT_MS = 40; // render-side refresh of the active board (25 Hz)
+
 const emptyLatest = {
   r1: 0, i1: 0, g1: 0, r2: 0, i2: 0, g2: 0,
   r3: 0, i3: 0, g3: 0, r4: 0, i4: 0, g4: 0,
@@ -29,31 +34,77 @@ const emptyLatest = {
   bleDrops: 0, bleDecim: 1,
 };
 
+const alphaPPG = 0.15;
+
+const readU24 = (dv, off) => dv.getUint16(off, true) + (dv.getUint8(off + 2) << 16);
+
 export const useComm = () => {
-  const [isConnected, setIsConnected] = useState(false);
+  // Roster of connected boards (drives the tab bar)
+  const [boards, setBoards] = useState([]); // [{id, name, kind, connected}]
+  const [activeBoardId, setActiveBoardId] = useState(null);
   const [commMode, setCommMode] = useState('bluetooth'); // 'bluetooth' or 'rtt'
   const [isRecording, setIsRecording] = useState(false);
   const [isFiltered, setIsFiltered] = useState(false);
 
-  const isRecordingRef = useRef(false);
-  const isFilteredRef = useRef(false);
-  const deviceRef = useRef(null);
-  const wsRef = useRef(null);
-
-  const alphaPPG = 0.15;
-  const filterStateRef = useRef({});
-
+  // Snapshot of the ACTIVE board only — ingest for all boards happens in
+  // refs so 10 boards x 25 frames/s never means 250 React renders/s.
   const [latestData, setLatestData] = useState(emptyLatest);
   const [history, setHistory] = useState([]);
-  const statusRef = useRef({});
-  const recordedDataRef = useRef([]);
-  const lastDevTimeRef = useRef(null);
 
-  const applyFilter = (point) => {
+  const storesRef = useRef(new Map()); // id -> per-board mutable store
+  const activeIdRef = useRef(null);
+  const isRecordingRef = useRef(false);
+  const isFilteredRef = useRef(false);
+
+  const syncRoster = () => {
+    setBoards(Array.from(storesRef.current.values()).map(s => ({
+      id: s.id, name: s.name, kind: s.kind, connected: s.connected,
+    })));
+  };
+
+  const makeStore = (id, name, kind) => ({
+    id, name, kind,
+    connected: false,
+    device: null,       // BLE only
+    ws: null,           // RTT only
+    history: [],
+    latest: { ...emptyLatest },
+    status: {},
+    filterState: {},
+    recorded: [],
+    lastDevTime: null,
+    textBuffer: '',
+  });
+
+  const snapshotActive = () => {
+    const s = storesRef.current.get(activeIdRef.current);
+    if (!s) {
+      setLatestData(emptyLatest);
+      setHistory([]);
+      return;
+    }
+    setLatestData({ ...s.latest, ...s.status });
+    setHistory(s.history.slice());
+  };
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (storesRef.current.get(activeIdRef.current)) snapshotActive();
+    }, SNAPSHOT_MS);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ------------------------------------------------------------------ */
+  /*  Per-board ingest                                                  */
+  /* ------------------------------------------------------------------ */
+
+  const applyFilter = (store, point) => {
     if (!isFilteredRef.current) return point;
-    const fs = filterStateRef.current;
+    const fs = store.filterState;
     const out = { ...point };
     for (const key of WAVE_KEYS) {
+      if (point[key] === null) { fs[key] = undefined; continue; } // loss break
       if (fs[key] === undefined || isNaN(fs[key])) fs[key] = point[key];
       fs[key] = alphaPPG * point[key] + (1 - alphaPPG) * fs[key];
       out[key] = Math.round(fs[key]);
@@ -61,21 +112,19 @@ export const useComm = () => {
     return out;
   };
 
-  const pushPoints = (points) => {
-    const processed = points.map(applyFilter);
+  const pushPoints = (store, points) => {
+    const processed = points.map(p => applyFilter(store, p));
     const last = processed[processed.length - 1];
-    setLatestData(prev => ({ ...prev, ...last, ...statusRef.current }));
-    setHistory(prev => [...prev, ...processed].slice(-HISTORY_LEN));
+    store.latest = { ...store.latest, ...last };
+    store.history = [...store.history, ...processed].slice(-HISTORY_LEN);
     if (isRecordingRef.current) {
       for (const p of processed) {
-        recordedDataRef.current.push({ ...p, ...statusRef.current });
+        store.recorded.push({ ...p, ...store.status });
       }
     }
   };
 
-  const readU24 = (dv, off) => dv.getUint16(off, true) + (dv.getUint8(off + 2) << 16);
-
-  const processBinaryFrame = (dv) => {
+  const processBinaryFrame = (store, dv) => {
     if (dv.byteLength < 12 || dv.getUint16(0, true) !== MAGIC) return false;
     const type = dv.getUint8(2);
 
@@ -90,13 +139,13 @@ export const useComm = () => {
       const points = [];
       // Real losses (shed frames) appear as device-time jumps; insert
       // a null point so charts BREAK the trace instead of bridging.
-      if (lastDevTimeRef.current !== null && devT - lastDevTimeRef.current > 200) {
-        const gap = { timestamp: lastDevTimeRef.current + 1 };
+      if (store.lastDevTime !== null && devT - store.lastDevTime > 200) {
+        const gap = { timestamp: store.lastDevTime + 1 };
         for (const k2 of WAVE_KEYS) gap[k2] = null;
         for (let b = 1; b <= 4; b++) gap[`p${b}`] = null;
         points.push(gap);
       }
-      lastDevTimeRef.current = devT;
+      store.lastDevTime = devT;
       for (let k = 0; k < n; k++) {
         const pt = { timestamp: devT - (n - 1 - k) * TICK_MS, wallT };
         // PPG block: sensor-major, 4 samples x (r,i,g) u24
@@ -113,7 +162,7 @@ export const useComm = () => {
         }
         points.push(pt);
       }
-      pushPoints(points);
+      pushPoints(store, points);
       return true;
     }
 
@@ -121,7 +170,7 @@ export const useComm = () => {
       if (dv.byteLength < 43) return true;
       const flags = dv.getUint8(36);
       const hasLink = dv.byteLength >= 45;
-      statusRef.current = {
+      store.status = {
         sht1t: dv.getInt16(8, true) / 100,  sht1h: dv.getUint16(10, true) / 100,
         sht2t: dv.getInt16(12, true) / 100, sht2h: dv.getUint16(14, true) / 100,
         sht3t: dv.getInt16(16, true) / 100, sht3h: dv.getUint16(18, true) / 100,
@@ -140,14 +189,13 @@ export const useComm = () => {
         bleDrops: hasLink ? dv.getUint8(43) : 0,
         bleDecim: hasLink ? dv.getUint8(44) : 1,
       };
-      setLatestData(prev => ({ ...prev, ...statusRef.current }));
       return true;
     }
     return true;
   };
 
   // Firmware JSON debug mode (1 Hz over BLE, command 'J')
-  const processDataLine = (line) => {
+  const processDataLine = (store, line) => {
     line = line.trim();
     if (!(line.startsWith('{') && line.endsWith('}'))) return;
     try {
@@ -157,62 +205,93 @@ export const useComm = () => {
         r1: data.r ?? 0, i1: data.i ?? 0, g1: data.g ?? 0,
         p1: (data.p ?? 0) / 100,
       };
-      statusRef.current = {
-        ...statusRef.current,
+      store.status = {
+        ...store.status,
         sht1t: data.t ?? 0, sht1h: data.h ?? 0,
         tmp1: data.skin ?? 0, vbat: data.vbat ?? 0,
       };
-      pushPoints([pt]);
+      pushPoints(store, [pt]);
     } catch (e) {}
+  };
+
+  /* ------------------------------------------------------------------ */
+  /*  Connections                                                       */
+  /* ------------------------------------------------------------------ */
+
+  const activateBoard = (id) => {
+    activeIdRef.current = id;
+    setActiveBoardId(id);
+    snapshotActive();
   };
 
   // Wired mode: binary frames relayed from SEGGER RTT by
   // scripts/rtt_bridge.py (needs the J-Link probe; decimated preview).
-  const connectRtt = () => {
+  // One bridge = one board; RTT occupies a single tab.
+  const addRttBoard = () => {
+    if (storesRef.current.has('rtt')) {
+      activateBoard('rtt');
+      return;
+    }
+    const store = makeStore('rtt', 'RTT (wired)', 'rtt');
     try {
       const ws = new WebSocket(RTT_BRIDGE_URL);
       ws.binaryType = 'arraybuffer';
-      wsRef.current = ws;
+      store.ws = ws;
 
-      ws.onopen = () => setIsConnected(true);
+      ws.onopen = () => { store.connected = true; syncRoster(); };
       ws.onmessage = (event) => {
-        processBinaryFrame(new DataView(event.data));
+        processBinaryFrame(store, new DataView(event.data));
       };
-      ws.onclose = () => setIsConnected(false);
+      ws.onclose = () => { store.connected = false; syncRoster(); };
       ws.onerror = (err) => {
         console.error('RTT bridge error (is rtt_bridge.py running?):', err);
-        setIsConnected(false);
+        store.connected = false;
+        syncRoster();
       };
+
+      storesRef.current.set('rtt', store);
+      syncRoster();
+      activateBoard('rtt');
     } catch (err) {
       console.error('RTT Error:', err);
     }
   };
 
-  const connectBluetooth = async () => {
+  const addBluetoothBoard = async () => {
     try {
+      // The Web Bluetooth chooser picks ONE device per call — click
+      // "Add Board" once per board, up to MAX_BOARDS.
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ namePrefix: 'KMM' }, { namePrefix: 'CPAP' }],
         optionalServices: [NUS_SERVICE_UUID]
       });
 
+      const id = device.id || `ble-${storesRef.current.size}-${Date.now()}`;
+      const existing = storesRef.current.get(id);
+      if (existing && existing.connected) {
+        activateBoard(id); // already streaming — just show it
+        return;
+      }
+
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService(NUS_SERVICE_UUID);
       const characteristic = await service.getCharacteristic(NUS_TX_CHARACTERISTIC_UUID);
 
-      deviceRef.current = device;
-      setIsConnected(true);
+      // Re-use the old store on reconnect so history/recording continue
+      const store = existing || makeStore(id, device.name || `Board ${storesRef.current.size + 1}`, 'ble');
+      store.device = device;
+      store.connected = true;
 
       await characteristic.startNotifications();
-      let textBuffer = "";
       const decoder = new TextDecoder();
 
       characteristic.addEventListener('characteristicvaluechanged', (event) => {
         const value = event.target.value;
-        if (processBinaryFrame(value)) return;
-        textBuffer += decoder.decode(value);
-        const lines = textBuffer.split('\n');
-        textBuffer = lines.pop();
-        for (let line of lines) processDataLine(line);
+        if (processBinaryFrame(store, value)) return;
+        store.textBuffer += decoder.decode(value);
+        const lines = store.textBuffer.split('\n');
+        store.textBuffer = lines.pop();
+        for (let line of lines) processDataLine(store, line);
       });
 
       // Ensure the firmware is in binary mode
@@ -222,27 +301,55 @@ export const useComm = () => {
       } catch (e) { /* RX optional */ }
 
       device.addEventListener('gattserverdisconnected', () => {
-        setIsConnected(false);
+        store.connected = false;
+        syncRoster();
       });
 
+      storesRef.current.set(id, store);
+      syncRoster();
+      activateBoard(id);
     } catch (err) {
       console.error('Bluetooth Error:', err);
     }
   };
 
-  const connect = () => {
-    if (commMode === 'rtt') connectRtt();
-    else connectBluetooth();
+  const addBoard = () => {
+    if (storesRef.current.size >= MAX_BOARDS) {
+      alert(`Limit reached: up to ${MAX_BOARDS} boards per portal.`);
+      return;
+    }
+    if (commMode === 'rtt') addRttBoard();
+    else addBluetoothBoard();
   };
 
-  const disconnect = () => {
-    window.location.reload();
+  const disconnectBoard = (id) => {
+    const store = storesRef.current.get(id);
+    if (!store) return;
+    try {
+      if (store.kind === 'ble' && store.device?.gatt?.connected) {
+        store.device.gatt.disconnect();
+      }
+      if (store.kind === 'rtt' && store.ws) store.ws.close();
+    } catch (e) { /* already down */ }
+    storesRef.current.delete(id);
+    if (activeIdRef.current === id) {
+      const next = storesRef.current.keys().next();
+      activateBoard(next.done ? null : next.value);
+    }
+    syncRoster();
   };
+
+  /* ------------------------------------------------------------------ */
+  /*  Recording / filtering                                             */
+  /* ------------------------------------------------------------------ */
 
   const toggleRecording = () => {
     const nextState = !isRecording;
-    if (isRecording) exportToCsv();
-    else recordedDataRef.current = [];
+    if (isRecording) {
+      exportAllCsv();
+    } else {
+      for (const s of storesRef.current.values()) s.recorded = [];
+    }
     setIsRecording(nextState);
     isRecordingRef.current = nextState;
   };
@@ -253,29 +360,42 @@ export const useComm = () => {
     isFilteredRef.current = nextState;
   };
 
-  const exportToCsv = () => {
-    if (recordedDataRef.current.length === 0) return;
+  // One CSV per board (the browser may ask to allow multiple downloads)
+  const exportAllCsv = () => {
     const cols = ['timestamp','wallT',
       'r1','i1','g1','r2','i2','g2','r3','i3','g3','r4','i4','g4',
       'p1','p2','p3','p4',
       'sht1t','sht1h','sht2t','sht2h','sht3t','sht3h',
       'tmp1','tmp2','tmp3','vbat'];
-    const headers = cols.join(',') + '\n';
-    const csvContent = recordedDataRef.current.map(d =>
-      cols.map(c => d[c] ?? '').join(',')
-    ).join('\n');
-    const blob = new Blob([headers + csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'KMM_PMask_Data.csv';
-    a.click();
-    window.URL.revokeObjectURL(url);
+    for (const store of storesRef.current.values()) {
+      if (store.recorded.length === 0) continue;
+      const headers = cols.join(',') + '\n';
+      const csvContent = store.recorded.map(d =>
+        cols.map(c => d[c] ?? '').join(',')
+      ).join('\n');
+      const blob = new Blob([headers + csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `KMM_PMask_${store.name.replace(/[^\w-]+/g, '_')}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    }
   };
 
+  const activeBoard = boards.find(b => b.id === activeBoardId) || null;
+
   return {
-    connect, disconnect, isConnected, latestData, history,
+    // multi-board
+    boards, activeBoardId, activeBoard,
+    setActiveBoard: activateBoard,
+    addBoard, disconnectBoard,
+    maxBoards: MAX_BOARDS,
+    // active-board view (same shape the dashboard always used)
+    isConnected: !!activeBoard?.connected,
+    latestData, history,
+    // global controls
     isRecording, toggleRecording, isFiltered, toggleFilter,
-    commMode, setCommMode
+    commMode, setCommMode,
   };
 };

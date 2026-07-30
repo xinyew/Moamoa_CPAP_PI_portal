@@ -94,6 +94,39 @@ body {
   height: 180px;
 }
 
+/* Board tabs (multi-board): one tab per connected board */
+.board-tabs {
+  grid-column: span 12;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.board-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  border: 1px solid var(--border-glass);
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.board-tab.active {
+  background: var(--accent-blue);
+  color: #000;
+}
+
+.board-tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .status-badge {
   display: flex;
   align-items: center;

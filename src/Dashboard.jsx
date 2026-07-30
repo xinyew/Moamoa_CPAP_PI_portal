@@ -42,8 +42,12 @@ const MiniChart = ({ title, dataKey, color, history, latest, unit }) => (
 
 const Dashboard = () => {
   const {
-    connect,
-    disconnect,
+    boards,
+    activeBoardId,
+    setActiveBoard,
+    addBoard,
+    disconnectBoard,
+    maxBoards,
     isConnected,
     latestData,
     history,
@@ -102,7 +106,7 @@ const Dashboard = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {!isConnected && (
+          {boards.length < maxBoards && (
             <div style={{
               display: 'flex',
               background: 'rgba(255,255,255,0.05)',
@@ -157,9 +161,11 @@ const Dashboard = () => {
             {isConnected ? 'LIVE' : 'DISCONNECTED'}
           </div>
 
-          {!isConnected ? (
-            <button onClick={connect}>Connect</button>
-          ) : (
+          {boards.length < maxBoards && (
+            <button onClick={addBoard}>+ Add Board</button>
+          )}
+
+          {isConnected && (
             <>
               <button
                 onClick={toggleFilter}
@@ -184,11 +190,35 @@ const Dashboard = () => {
                 {isRecording ? <Square size={16} /> : <Play size={16} />}
                 {isRecording ? 'Stop & Save CSV' : 'Start Recording'}
               </button>
-              <button className="disconnect" onClick={disconnect}>Disconnect</button>
+              <button className="disconnect" onClick={() => disconnectBoard(activeBoardId)}>Disconnect</button>
             </>
           )}
         </div>
       </header>
+
+      {/* Board tabs — up to 10 boards stream concurrently; the active
+          tab selects which board's dashboard is rendered below. */}
+      {boards.length > 0 && (
+        <div className="board-tabs">
+          {boards.map(b => (
+            <button
+              key={b.id}
+              className={`board-tab ${b.id === activeBoardId ? 'active' : ''}`}
+              onClick={() => setActiveBoard(b.id)}
+            >
+              <span
+                className="board-tab-dot"
+                style={{ background: b.connected ? 'var(--accent-green)' : 'var(--accent-red)' }}
+              />
+              {b.kind === 'rtt' ? <Cable size={14} /> : <Bluetooth size={14} />}
+              {b.name}
+            </button>
+          ))}
+          <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', alignSelf: 'center', marginLeft: '0.5rem' }}>
+            {boards.length}/{maxBoards} boards
+          </span>
+        </div>
+      )}
 
       {/* Environment / status telemetry */}
       <div className="glass-card env-card">
