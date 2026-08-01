@@ -12,7 +12,7 @@ Reviewed (not merged) two branches pushed by ysw0624z:
 
 - `origin/rev2-enhancement` — ONE commit `96d5f57` ("Rev2: fix waveform
   rendering, surface sensor faults, add pressure delta mode"), forked
-  from `b388e f2` = BEFORE this repo's multi-board refactor (919aba1) and
+  from `b388ef2` = BEFORE this repo's multi-board refactor (919aba1) and
   protocol README (b94f2bb). It rewrites `useComm.js`/`Dashboard.jsx`
   on the old single-board architecture.
 - `origin/feature/dashboard-enhancements` — 4 earlier commits (demo
