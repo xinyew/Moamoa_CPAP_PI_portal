@@ -6,6 +6,61 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-01 (later still) — 'P' sensing toggle implemented on `rev2-enhancement`
+
+Branch note: working on `rev2-enhancement` at the user's request. It was
+fast-forwarded to `origin/rev2-enhancement-xinye` (0c42b4e) first, so the
+two lines are identical apart from this commit.
+
+Verification before coding (the established practice — it paid off):
+- First pass found NO 'P' anywhere: commit 4c03bf3 absent, no `docs/`
+  directory, `comm_protocol.h` listing only 'B'/'J'/'T', and flags byte 36
+  with bits 0-1 only. Checked all four firmware branches (main,
+  integration, eval, quartz). Reported rather than coding to the spec.
+- xinye pushed during the session. Re-pulled and confirmed against source:
+  `COMM_CMD_POWER 'P'` (comm_protocol.h:86), handler at comm_manager.c:447
+  (`len >= 2`, `atomic_set(&sensing_enable, data[1] ? 1 : 0)`), and
+  `p[36] |= (d->sensing_on ? BIT(2) : 0)` at comm_manager.c:282-283.
+  docs/ble-protocol.md + docs/portal-integration.md now exist and match.
+- Standing instruction from the user: `git pull` before every read of the
+  firmware repo (`../Moamoa_CPAP_PI_firmware`).
+
+Implementation:
+- `useComm.js`: parse `sensingOn: (flags & 4) !== 0`; add
+  `setSensing(on)` writing `[0x50, on?1:0]` via the existing `rxCharRef`
+  (same write-without-response path as the 'T' tsync). Nothing is sent on
+  connect — the board keeps its setting across disconnects, so the UI
+  reads bit2 and reflects it. `emptyLatest.sensingOn` defaults true
+  (boot default is ON) so a fresh connect does not flash "paused".
+- `Dashboard.jsx`: `sensingOn` from device state only; `sensingIdle =
+  isConnected && !sensingOn`; bit0 separates the two idle causes. Toggle
+  button (Power icon) disabled unless BLE — 'P' rides the NUS RX
+  characteristic, which the RTT path does not have.
+- Badge: LIVE / SENSING OFF (mask present) / NO MASK (mask absent) /
+  PAUSED (local display freeze) / DEMO / DISCONNECTED.
+- `index.css`: `.sensing-idle .chart-card` greys + dims the charts so a
+  stale trace cannot be mistaken for live signal, while the strip
+  (battery, mask, SD) stays legible. Not a frozen screen, per the doc.
+
+Verified: `vite build` clean. Bit-2 parsing driven with synthetic STATUS
+frames via `window.__feedFrame`. Then the connection-gated paths were
+driven for real through the RTT WebSocket path using a throwaway bridge
+(scratchpad `fake_rtt.py` serving ws://localhost:8765) that steps the
+flags byte 0b111 -> 0b011 -> 0b010 -> 0b111. Observed, in order:
+LIVE/"Sensing"/not greyed -> SENSING OFF/"Sensing Off"/greyed ->
+NO MASK/"Sensing Off"/greyed -> LIVE again. Recovery needs no 'P',
+matching the firmware's auto-resume. No console errors.
+
+NOT verified (needs hardware): the outgoing 'P' write itself. The button
+is BLE-only and no board was available, so `setSensing` has never actually
+put bytes on the wire. It uses the identical characteristic and method as
+the working tsync write. Fold this into the §7-item-2 live-board retest.
+
+Still open: port this commit to `android-tablet-app` (the bleTransport
+seam makes it near-identical — `conn.write(new Uint8Array([0x50, x]))`).
+
+---
+
 ## Session 2026-08-01 (later) — compact one-screen layout on `rev2-enhancement-xinye`
 
 User request: make the portal fit ONE screen with no scrolling (web first;

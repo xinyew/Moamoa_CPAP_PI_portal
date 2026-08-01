@@ -40,7 +40,9 @@ const emptyLatest = {
   p1: 0, p2: 0, p3: 0, p4: 0,
   sht1t: 0, sht1h: 0, sht2t: 0, sht2h: 0, sht3t: 0, sht3h: 0,
   tmp1: 0, tmp2: 0, tmp3: 0,
-  vbat: 0, maskPresent: false, sdOk: false,
+  // sensingOn defaults true: the board boots sensing ON, so assuming true
+  // avoids flashing "paused" for the up-to-1 s before the first STATUS.
+  vbat: 0, maskPresent: false, sdOk: false, sensingOn: true,
   ppgRate: 0, baroRate: 0,
   ppgMask: 0, baroMask: 0, shtMask: 0, tmpMask: 0,
   bleDrops: 0, bleDecim: 1,
@@ -238,6 +240,11 @@ export const useComm = () => {
         vbat: dv.getUint16(34, true),
         maskPresent: (flags & 1) !== 0,
         sdOk: (flags & 2) !== 0,
+        // bit2 is the board's OWN view of whether it is sensing. It clears
+        // both for a 'P' off and for the automatic mask-absent standby, so
+        // this is the only honest source for the toggle — never the last
+        // command we sent.
+        sensingOn: (flags & 4) !== 0,
         ppgRate: dv.getUint8(37),
         baroRate: dv.getUint8(38),
         ppgMask: swapBits12(dv.getUint8(39)),
@@ -302,7 +309,7 @@ export const useComm = () => {
     statusRef.current = {
       sht1t: 24.5, sht1h: 45.2, sht2t: 24.8, sht2h: 44.9, sht3t: 25.1, sht3h: 45.6,
       tmp1: 33.2, tmp2: 33.8, tmp3: 34.1,
-      vbat: 3850, maskPresent: true, sdOk: true,
+      vbat: 3850, maskPresent: true, sdOk: true, sensingOn: true,
       ppgRate: 100, baroRate: 100,
       ppgMask: 0b1111, baroMask: 0b1111, shtMask: 0b111, tmpMask: 0b111,
       bleDrops: 0, bleDecim: 1,
@@ -373,6 +380,19 @@ export const useComm = () => {
       sdv.setBigUint64(1, BigInt(Date.now()), true);
       await rx.writeValueWithoutResponse(sync);
     } catch (e) { /* link may be mid-drop; next interval retries */ }
+  };
+
+  // 'P' + u8 on NUS RX: remote sensing enable. OFF puts the board in the
+  // same state as mask-absent standby (LEDs off, sampling paused, DATA
+  // stops) while STATUS keeps arriving at 1 Hz. Idempotent, and the board
+  // survives disconnects with this setting, so we never send it on connect
+  // — we read bit2 of STATUS and reflect whatever the board reports.
+  const setSensing = async (on) => {
+    const rx = rxCharRef.current;
+    if (!rx) return;
+    try {
+      await rx.writeValueWithoutResponse(new Uint8Array([0x50, on ? 1 : 0]));
+    } catch (e) { /* link may be mid-drop; the toggle re-reads from STATUS */ }
   };
 
   const connectBluetooth = async () => {
@@ -502,6 +522,7 @@ export const useComm = () => {
     markCount, addMark,
     filterAlpha, setFilterAlpha,
     streamStart,
+    setSensing,
     commMode, setCommMode
   };
 };

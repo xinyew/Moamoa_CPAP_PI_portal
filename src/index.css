@@ -260,6 +260,26 @@ button.demo.active { background: var(--accent-amber); color: #000; }
   font-variant-numeric: tabular-nums;
 }
 
+/* Sensing off: the board is deliberately idle and still sending STATUS.
+   Grey the chart cards so stale traces read as "not measuring" rather than
+   a live signal — the strip (battery, mask, SD) stays fully legible. */
+.sensing-idle .chart-card {
+  filter: grayscale(1);
+  opacity: 0.45;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+/* Remote sensing enable toggle */
+button.sensing {
+  background: transparent;
+  color: var(--accent-green);
+  border: 1px solid var(--accent-green);
+}
+button.sensing.off {
+  color: var(--accent-amber);
+  border-color: var(--accent-amber);
+}
+
 /* Offline-sensor warning (rides at the end of the strip) */
 .offline-note {
   font-size: 0.72rem;

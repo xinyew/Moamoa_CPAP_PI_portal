@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
-import { Activity, Thermometer, Droplets, BatteryMedium, Play, Square, Pause, Bluetooth, Cable, Gauge, LayoutGrid, Layers, FlaskConical, Flag, Map } from 'lucide-react';
+import { Activity, Thermometer, Droplets, BatteryMedium, Play, Square, Pause, Bluetooth, Cable, Gauge, LayoutGrid, Layers, FlaskConical, Flag, Map, Power } from 'lucide-react';
 import { useComm, CH_OF } from './useComm';
 import MaskHeatmap from './MaskHeatmap';
 import { BARO_POS, SHT_POS, TMP_POS } from './maskGeometry';
@@ -131,6 +131,7 @@ const Dashboard = () => {
     setFilterAlpha,
     streamStart,
     commMode,
+    setSensing,
     setCommMode
   } = useComm();
 
@@ -159,6 +160,16 @@ const Dashboard = () => {
   }, []);
 
   const streaming = isConnected || isDemo; // demo streams but is NOT a real connection
+
+  // Sensing state comes from STATUS flags bit2 — the board's own view, never
+  // the last 'P' we sent. It also clears on the automatic mask-absent standby,
+  // so bit0 tells the two apart: no mask is the board protecting itself, mask
+  // present with sensing off is a deliberate user pause.
+  const sensingOn = latestData.sensingOn !== false;
+  const sensingIdle = isConnected && !sensingOn;
+  const idleReason = latestData.maskPresent ? 'paused by user' : 'mask disconnected';
+  // 'P' rides the NUS RX characteristic, which only exists on a BLE link.
+  const canToggleSensing = isConnected && commMode === 'bluetooth';
 
   // X-axis label: seconds elapsed since the stream started (device timebase)
   const fmtElapsed = (t) => (streamStart != null && typeof t === 'number' ? `${((t - streamStart) / 1000).toFixed(1)}s` : '');
@@ -390,7 +401,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container${sensingIdle ? ' sensing-idle' : ''}`}>
       {/* Header Section */}
       <header className="glass-card header-card">
         <div style={{ minWidth: 0 }}>
@@ -444,10 +455,29 @@ const Dashboard = () => {
             </button>
           </div>
 
-          <div className={`status-badge ${streaming ? ((isPaused && !isDemo) ? 'status-paused' : 'status-online') : 'status-offline'}`}>
+          <div className={`status-badge ${streaming ? (((isPaused && !isDemo) || sensingIdle) ? 'status-paused' : 'status-online') : 'status-offline'}`}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'currentColor' }} />
-            {isDemo ? 'DEMO' : (isConnected ? (isPaused ? 'PAUSED' : 'LIVE') : 'DISCONNECTED')}
+            {isDemo ? 'DEMO'
+              : isConnected ? (isPaused ? 'PAUSED'
+                              : sensingIdle ? (latestData.maskPresent ? 'SENSING OFF' : 'NO MASK')
+                              : 'LIVE')
+              : 'DISCONNECTED'}
           </div>
+
+          {/* Remote sensing enable ('P'). The board keeps STATUS coming while
+              sensing is off, so this is a real idle state, not a dead link. */}
+          <button className={sensingOn ? 'sensing' : 'sensing off'}
+                  disabled={!canToggleSensing}
+                  onClick={() => setSensing(!sensingOn)}
+                  title={canToggleSensing
+                    ? (sensingOn
+                        ? 'Sensing on — click to stop the sensors and save about 10 mA. STATUS keeps arriving.'
+                        : `Sensing off (${idleReason}) — click to resume. The board also resumes on its own when the mask is reattached.`)
+                    : 'Needs a BLE connection'}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Power size={16} />
+            {sensingOn ? 'Sensing' : 'Sensing Off'}
+          </button>
 
           <button className={isDemo ? 'demo active' : 'demo'} disabled={isConnected} onClick={toggleDemo}
                   style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
