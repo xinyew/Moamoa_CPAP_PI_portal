@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { isNative, requestAndConnect, saveCsv, shareFiles } from './bleTransport';
 
 const RTT_BRIDGE_URL = 'ws://localhost:8765'; // scripts/rtt_bridge.py
@@ -13,6 +13,9 @@ const TICK_MS = 10;
 // board's RC clock drifts; repeats give the offline SD reader more
 // TSYNC records to drift-correct between (protocol spec v2.1).
 const TSYNC_INTERVAL_MS = 10 * 60 * 1000;
+// STATUS is 1 Hz; 4 s of silence is well past jitter and means the values on
+// screen are stale, not live.
+const STATUS_STALE_MS = 4000;
 
 const WAVE_KEYS = ['r1','i1','g1','r2','i2','g2','r3','i3','g3','r4','i4','g4'];
 // ~8 s at the 100 Hz sample rate — must exceed the longest selectable
@@ -87,6 +90,14 @@ export const useComm = () => {
   const [latestData, setLatestData] = useState(emptyLatest);
   const [history, setHistory] = useState([]);
   const statusRef = useRef({});
+  // A tablet has no console, so a connect that fails looks exactly like one
+  // that worked — the badge just sits there. Surface it instead.
+  const [connectError, setConnectError] = useState(null);
+  // Wall-clock time of the last STATUS frame. The board sends one every
+  // second, so silence means the link is dead even if the disconnect callback
+  // never fires (Android "zombie" connections do exactly that).
+  const lastStatusAtRef = useRef(0);
+  const [statusStale, setStatusStale] = useState(false);
   const recordedDataRef = useRef([]);
   const lastDevTimeRef = useRef(null);
 
@@ -94,6 +105,18 @@ export const useComm = () => {
   // show seconds elapsed since the stream started.
   const [streamStart, setStreamStart] = useState(null);
   const streamStartRef = useRef(null);
+
+  // Staleness watchdog. STATUS arrives at 1 Hz, so nothing for STATUS_STALE_MS
+  // means the data on screen is history, whatever the badge says. Covers board
+  // power loss and Android zombie links where onDisconnect never fires.
+  useEffect(() => {
+    if (!isConnected) { setStatusStale(false); return; }
+    const id = setInterval(() => {
+      const last = lastStatusAtRef.current;
+      setStatusStale(last !== 0 && Date.now() - last > STATUS_STALE_MS);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isConnected]);
 
   const applyFilter = (point) => {
     if (!isFilteredRef.current) return point;
@@ -244,6 +267,7 @@ export const useComm = () => {
         bleDrops: hasLink ? dv.getUint8(43) : 0,
         bleDecim: hasLink ? dv.getUint8(44) : 1,
       };
+      lastStatusAtRef.current = Date.now();
       setLatestData(prev => ({ ...prev, ...statusRef.current }));
       return true;
     }
@@ -412,6 +436,13 @@ export const useComm = () => {
 
     } catch (err) {
       console.error('Bluetooth Error:', err);
+      // The user cancelling the chooser is not a failure worth shouting about;
+      // anything else is (board taken by another central, adapter off, GATT
+      // error) and must be visible on a device with no console.
+      const cancelled = err && (err.name === 'NotFoundError' ||
+                                /cancel/i.test(err.message || ''));
+      setConnectError(cancelled ? null : (err?.message || 'connection failed'));
+      setIsConnected(false);
     }
   };
 
@@ -422,6 +453,14 @@ export const useComm = () => {
     setStreamStart(null);
     baselineRef.current = {};      // clean AC baseline for the fresh start
     setHistory([]);                // don't mix demo samples with real data
+    // Drop the PREVIOUS session's telemetry too. Without this the strip keeps
+    // rendering the old SD/VBAT/temps until the first new STATUS arrives — and
+    // forever if the connect never succeeds. That is how a pulled SD card kept
+    // reading "OK" across a reconnect.
+    statusRef.current = {};
+    setLatestData(emptyLatest);
+    lastStatusAtRef.current = 0;
+    setConnectError(null);
     isPausedRef.current = false;   // never start a connection paused
     setIsPaused(false);
     // RTT needs the localhost J-Link bridge — web portal only
@@ -492,6 +531,7 @@ export const useComm = () => {
     markCount, addMark,
     filterAlpha, setFilterAlpha,
     streamStart,
+    connectError, statusStale,
     commMode, setCommMode
   };
 };

@@ -131,6 +131,8 @@ const Dashboard = () => {
     filterAlpha,
     setFilterAlpha,
     streamStart,
+    connectError,
+    statusStale,
     commMode,
     setCommMode
   } = useComm();
@@ -287,7 +289,8 @@ const Dashboard = () => {
   // env/status telemetry plus the chart controls (PPG window, RAW/AC,
   // pressure ABS/Δ + Tare) and the sensor-fault note.
   const stripRow = (
-    <div className="glass-card strip-card">
+    <div className={`glass-card strip-card${statusStale ? ' strip-stale' : ''}`}
+         title={statusStale ? 'Stale — no STATUS frame for over 4 s' : undefined}>
       <div className="strip-item" title="SHT40 relative humidity, sensors 1/2/3">
         <Droplets color="var(--accent-blue)" size={14} />
         <span className="strip-label">RH%</span>
@@ -449,9 +452,19 @@ const Dashboard = () => {
             </button>
           </div>
 
-          <div className={`status-badge ${streaming ? ((isPaused && !isDemo) ? 'status-paused' : 'status-online') : 'status-offline'}`}>
+          {/* NO DATA and CONNECT FAILED outrank LIVE: a badge that says LIVE
+              over frozen numbers is the failure mode this replaces. */}
+          <div className={`status-badge ${
+            connectError ? 'status-offline'
+            : statusStale ? 'status-stale'
+            : streaming ? ((isPaused && !isDemo) ? 'status-paused' : 'status-online')
+            : 'status-offline'}`}
+            title={connectError || (statusStale ? 'No STATUS frame for over 4 s — the values shown are stale' : undefined)}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'currentColor' }} />
-            {isDemo ? 'DEMO' : (isConnected ? (isPaused ? 'PAUSED' : 'LIVE') : 'DISCONNECTED')}
+            {connectError ? 'CONNECT FAILED'
+              : isDemo ? 'DEMO'
+              : isConnected ? (statusStale ? 'NO DATA' : (isPaused ? 'PAUSED' : 'LIVE'))
+              : 'DISCONNECTED'}
           </div>
 
           <button className={isDemo ? 'demo active' : 'demo'} disabled={isConnected} onClick={toggleDemo}

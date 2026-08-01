@@ -6,6 +6,71 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-01 (later still) — stale-data fixes on `android-tablet-app`
+
+Reported symptom: the tablet kept showing "SD OK" after the card was
+pulled, even across a reconnect. Firmware side was already verified
+correct (Moamoa_CPAP_PI_firmware ec63cab, "storage: detect SD hot-unplug
+via active presence verify"); re-confirmed here that SD is flags bit1 at
+byte 36 (`comm_manager.c:282`) and that the parser in useComm.js already
+reads it correctly. The bug was entirely display-side: the app could
+present the previous session's telemetry as live.
+
+Three fixes, all in this branch:
+
+1. `connect()` now clears `statusRef.current` and `setLatestData(
+   emptyLatest)` (plus `lastStatusAtRef`/`connectError`). It previously
+   reset history, pause and the AC baselines but NOT the telemetry, so
+   the strip kept rendering the old SD/VBAT/temps until the first new
+   STATUS — and indefinitely if the connect never succeeded.
+2. Failed connects are surfaced. The catch in `connectBluetooth` only
+   did `console.error`, which is invisible on a tablet, so a failed
+   reconnect looked identical to a good one. Now sets `connectError` and
+   the badge reads CONNECT FAILED (error text in the tooltip). A user
+   cancelling the chooser (NotFoundError / "cancel") is deliberately NOT
+   treated as an error.
+3. Staleness watchdog. `lastStatusAtRef` is stamped on every parsed
+   STATUS; a 1 Hz interval sets `statusStale` when the last one is older
+   than `STATUS_STALE_MS` (4 s) while connected. Badge shows NO DATA and
+   `.strip-stale` greys the strip, so frozen numbers cannot read as live.
+   Catches board power loss and Android zombie links where onDisconnect
+   never fires. NO DATA and CONNECT FAILED both outrank LIVE.
+
+Verified on the dev server, driving the RTT path with a throwaway
+WebSocket bridge (scratchpad `fake_rtt2.py`) that sends STATUS for ~3 s,
+then goes SILENT while holding the socket open, then resumes with SD
+absent:
+- LIVE / SD OK / not greyed -> **NO DATA / SD still OK / strip greyed**
+  (the exact reported failure, now flagged) -> NO DATA / SD -- ->
+  LIVE / SD -- (recovered) -> DISCONNECTED when the socket closed.
+- Fix 1 isolated with `window.__feedFrame`: strip showed SD OK / 3.85V,
+  then a connect attempt with no bridge listening reset it to SD -- /
+  0.00V instead of holding the old values.
+- Fix 2 isolated by stubbing `navigator.bluetooth.requestDevice` to
+  reject with a NetworkError: badge went to CONNECT FAILED with the
+  message in the tooltip.
+
+Build/packaging: `npm install` was needed first (this working tree had no
+Capacitor deps). `vite build` clean, `npx cap sync android` OK, and the
+debug APK rebuilt successfully with JAVA_HOME set to Android Studio's
+bundled JBR 21 (`C:\Program Files\Android\Android Studio\jbr`) and
+`android/local.properties` written with `sdk.dir=C:/Users/ysw06/AppData/
+Local/Android/Sdk` (not committed). NOTE: this machine has no portable
+JDK at %LOCALAPPDATA%\Android\jdk — use the Android Studio JBR instead.
+
+NOT done: install/verify on the tablet. `adb devices` is empty — no
+device attached to this machine (the SM-X820 was authorised against the
+old PC and will re-prompt). The APK at
+android/app/build/outputs/apk/debug/app-debug.apk is current as of this
+session; install it and run the verification recipe (VBAT ticking every
+second = frames flowing; insert card -> OK within ~11 s; pull -> -- within
+~5 s; then walk out of range and confirm NO DATA rather than a frozen OK).
+
+Note: `npx cap sync android` rewrote android/*.gradle with LF line
+endings only — no content change. Reverted rather than committed.
+
+---
+
 ## Session 2026-08-01 (later) — compact one-screen layout on `rev2-enhancement-xinye`
 
 User request: make the portal fit ONE screen with no scrolling (web first;
