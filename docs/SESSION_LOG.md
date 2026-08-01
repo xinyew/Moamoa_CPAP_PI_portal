@@ -6,6 +6,45 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-01 (later) — compact one-screen layout on `rev2-enhancement-xinye`
+
+User request: make the portal fit ONE screen with no scrolling (web first;
+the Android app will be updated LATER — explicitly deferred by the user).
+Working branch: `rev2-enhancement-xinye` (created from
+`origin/rev2-enhancement`; session log carried over from main).
+
+Layout architecture (src/index.css + src/Dashboard.jsx):
+- `#root` is 100vh (`overflow: auto` + container `min-height: 540px` as a
+  floor — below that a scrollbar appears instead of clipping).
+- NOTE: App.jsx wraps the dashboard in `<div class="App">`; that div needs
+  `height: 100%` or the whole percentage-height chain silently collapses
+  to the min-height floor (found live via computed styles).
+- `.dashboard-container`: 12-col grid, `grid-template-rows: auto auto`
+  (header, strip) + `grid-auto-rows: minmax(0, 1fr)` — every implicit
+  chart row splits the leftover height evenly, so BOTH views fit
+  automatically: Overlay = 2 rows (2x2), Split = 4 rows (4-across).
+- Chart cards are `.chart-card` flex columns (`.chart-head` auto +
+  `.chart-body` flex-1 min-height:0) with `ResponsiveContainer
+  height="100%"` — no fixed pixel chart heights anywhere anymore.
+- The old env-card + two toolbar cards merged into ONE `.strip-card` row:
+  RH / Air C / Skin C / battery / SD + Window Full-5s + PPG RAW-AC +
+  Pressure ABS-delta-Tare + fault note (ellipsized, tooltip carries detail).
+- Compacted: paddings, button/segment sizes, axis fonts 10px, axis height
+  16, Y-axis width 44-48, legend 14px (pressure chart only), PPG latest
+  value moved into the card header, header subtitle one line, Record
+  button labels shortened.
+- Overlay: pressure + 3 PPG each `span 6` (2x2). Split: minis `span 3`
+  (4-across; 16 cards + strip + header all on screen).
+
+Verified in Chrome (dev server :5199) with Demo mode: Overlay and Split
+both fill exactly one 1568x774 viewport, no scrollbars, all controls
+visible. Split = 16 readable charts.
+
+Not done yet (deferred by user): the same compact treatment for the
+Android app branch.
+
+---
+
 ## Session 2026-08-01 — review of collaborator branch `rev2-enhancement`
 
 Reviewed (not merged) two branches pushed by ysw0624z:

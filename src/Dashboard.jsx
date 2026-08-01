@@ -77,26 +77,27 @@ const yieldOf = (rows, key) => {
   return n / rows.length;
 };
 
-// Single-signal card used by split view
+// Single-signal card used by split view — fills its grid cell
 const MiniChart = ({ title, dataKey, color, data, latest, unit, xAxis, tooltipFmt, dot }) => (
-  <div className="glass-card mini-card">
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-      <h2 style={{ fontSize: '0.875rem', color: color }}>{title}</h2>
-      <span className="num" style={{ fontSize: '1rem', fontWeight: 700 }}>
-        {latest}{unit && <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}> {unit}</span>}
+  <div className="glass-card mini-card chart-card">
+    <div className="chart-head" style={{ justifyContent: 'space-between' }}>
+      <h2 style={{ fontSize: '0.78rem', color: color, whiteSpace: 'nowrap' }}>{title}</h2>
+      <span className="num" style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+        {latest}{unit && <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}> {unit}</span>}
       </span>
     </div>
-    <ResponsiveContainer width="100%" height="72%">
-      <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-        <XAxis {...xAxis} />
-        <YAxis stroke="var(--text-dim)" fontSize={11} domain={['auto', 'auto']} width={52}
-               label={unit ? { value: unit, angle: -90, position: 'insideLeft', fill: 'var(--text-dim)', fontSize: 11, style: { textAnchor: 'middle' } } : undefined} />
-        <Tooltip contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle}
-                 labelFormatter={tooltipFmt} isAnimationActive={false} />
-        <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2} dot={dot ?? markDot} activeDot={false} isAnimationActive={false} />
-      </LineChart>
-    </ResponsiveContainer>
+    <div className="chart-body">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+          <XAxis {...xAxis} />
+          <YAxis stroke="var(--text-dim)" fontSize={10} domain={['auto', 'auto']} width={44} />
+          <Tooltip contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle}
+                   labelFormatter={tooltipFmt} isAnimationActive={false} />
+          <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2} dot={dot ?? markDot} activeDot={false} isAnimationActive={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   </div>
 );
 
@@ -165,11 +166,11 @@ const Dashboard = () => {
     domain: ['dataMin', 'dataMax'],
     tickFormatter: fmtElapsed,
     stroke: 'var(--text-dim)',
-    fontSize: 12,
+    fontSize: 10,
     tickLine: false,
     axisLine: false,
     minTickGap: 70,
-    height: 22,
+    height: 16,
   };
 
   // PPG-only window: pressure charts always show the full buffer.
@@ -191,8 +192,8 @@ const Dashboard = () => {
   }
   const ppgAxisProps = isWin
     ? { dataKey: 'tSec', type: 'number', domain: winDomain, ticks: winTicks, allowDataOverflow: true,
-        tickFormatter: (v) => `${v}s`, stroke: 'var(--text-dim)', fontSize: 12,
-        tickLine: false, axisLine: false, height: 22 }
+        tickFormatter: (v) => `${v}s`, stroke: 'var(--text-dim)', fontSize: 10,
+        tickLine: false, axisLine: false, height: 16 }
     : timeAxisProps;
   const ppgTooltip = {
     contentStyle: tooltipContentStyle,
@@ -272,24 +273,40 @@ const Dashboard = () => {
     </>
   );
 
-  // Split view has no pressure card header, so the same controls ride in a
-  // toolbar above the pressure mini-charts.
-  const baroControls = (
-    <div className="glass-card toolbar-card">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-        <Gauge color="var(--accent-amber)" size={16} />
-        <span className="toolbar-label">Pressure</span>
-        {baroControlGroup}
+  // Everything between the header and the charts rides in ONE slim strip:
+  // env/status telemetry plus the chart controls (PPG window, RAW/AC,
+  // pressure ABS/Δ + Tare) and the sensor-fault note.
+  const stripRow = (
+    <div className="glass-card strip-card">
+      <div className="strip-item" title="SHT40 relative humidity, sensors 1/2/3">
+        <Droplets color="var(--accent-blue)" size={14} />
+        <span className="strip-label">RH%</span>
+        <span className="strip-value">{fmt1(latestData.sht1h)}/{fmt1(latestData.sht2h)}/{fmt1(latestData.sht3h)}</span>
       </div>
-      <span className="chart-footnote" style={{ marginLeft: 'auto' }}>{baroBaseText}</span>
-    </div>
-  );
+      <div className="strip-item" title="SHT40 air temperature, sensors 1/2/3">
+        <Thermometer color="var(--accent-blue)" size={14} />
+        <span className="strip-label">Air°C</span>
+        <span className="strip-value">{fmt1(latestData.sht1t)}/{fmt1(latestData.sht2t)}/{fmt1(latestData.sht3t)}</span>
+      </div>
+      <div className="strip-item" title="TMP117 skin temperature, sensors 1/2/3">
+        <Thermometer color="var(--accent-amber)" size={14} />
+        <span className="strip-label">Skin°C</span>
+        <span className="strip-value">{fmt1(latestData.tmp1)}/{fmt1(latestData.tmp2)}/{fmt1(latestData.tmp3)}</span>
+      </div>
+      <div className="strip-item" title="Battery voltage">
+        <BatteryMedium color="var(--accent-green)" size={14} />
+        <span className="strip-value">{((latestData.vbat || 0) / 1000).toFixed(2)}<span className="strip-label">V</span></span>
+      </div>
+      <div className="strip-item" title="microSD card on the board (onboard logging)">
+        <Gauge color="var(--accent-yellow)" size={14} />
+        <span className="strip-label">SD</span>
+        <span className="strip-value">{latestData.sdOk ? 'OK' : '--'}</span>
+      </div>
 
-  // PPG time-window + RAW/AC controls, shown right above the PPG charts
-  const windowControls = (
-    <div className="glass-card toolbar-card">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-        <span className="toolbar-label">PPG Window</span>
+      <div className="strip-sep" />
+
+      <div className="strip-item">
+        <span className="toolbar-label">Window</span>
         <div className="segmented">
           {WINDOW_OPTIONS.map(opt => (
             <button key={opt} className={`segment ${windowSec === opt ? 'active' : ''}`}
@@ -300,7 +317,7 @@ const Dashboard = () => {
           ))}
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+      <div className="strip-item">
         <span className="toolbar-label">PPG</span>
         <div className="segmented">
           <button className={`segment ${!ppgAc ? 'active' : ''}`} onClick={() => setPpgAc(false)}
@@ -309,17 +326,24 @@ const Dashboard = () => {
                   title="Slow drift removed, pulsatile part only — puts all four sites on a comparable scale">AC</button>
         </div>
       </div>
-      {(offlinePpg.length > 0 || darkPpg.length > 0 || lossy.length > 0) && (
+      <div className="strip-item">
+        <span className="toolbar-label">Pressure</span>
+        {baroControlGroup}
+      </div>
+
+      {(offlinePpg.length > 0 || darkPpg.length > 0 || lossy.length > 0) ? (
         <span className="offline-note" title="OFFLINE = failed the boot probe; the firmware never retries, so it stays out until reboot. ALL-ZERO = the chip answers on I2C and the read succeeds, but red/IR/green are all 0 — LEDs likely never turned on. YIELD = share of samples that carried a value.">
           {[
             offlinePpg.length > 0 &&
-              `⚠ OFFLINE  ${offlinePpg.map(s => `PPG${s} (ch${CH_OF[s]})`).join('  /  ')}`,
+              `⚠ OFFLINE ${offlinePpg.map(s => `PPG${s} (ch${CH_OF[s]})`).join(' / ')}`,
             darkPpg.length > 0 &&
-              `⚠ ALL-ZERO, LEDs off?  ${darkPpg.map(s => `PPG${s} (ch${CH_OF[s]})`).join('  /  ')}`,
+              `⚠ ALL-ZERO ${darkPpg.map(s => `PPG${s} (ch${CH_OF[s]})`).join(' / ')}`,
             lossy.length > 0 &&
-              `YIELD  ${lossy.map(site => `PPG${site} ${Math.round(ppgYield[site] * 100)}%`).join('  /  ')}`,
-          ].filter(Boolean).join('     |     ')}
+              `YIELD ${lossy.map(site => `PPG${site} ${Math.round(ppgYield[site] * 100)}%`).join(' / ')}`,
+          ].filter(Boolean).join('  |  ')}
         </span>
+      ) : (
+        <span className="chart-footnote" style={{ marginLeft: 'auto' }}>{baroBaseText}</span>
       )}
     </div>
   );
@@ -327,29 +351,30 @@ const Dashboard = () => {
   const ppgOverlayChart = (title, color, keys, colors, latestKey) => {
     const firstLive = keys.findIndex((_, idx) => (latestData.ppgMask & (1 << idx)) !== 0);
     return (
-    <div className="glass-card ppg-sub-card" key={title}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-        <Activity color={color} size={18} />
-        <h2 style={{ fontSize: '1rem' }}>{title}</h2>
+    <div className="glass-card ppg-sub-card chart-card" key={title}>
+      <div className="chart-head">
+        <Activity color={color} size={15} />
+        <h2 style={{ fontSize: '0.85rem' }}>{title}{ppgAc ? ' · AC' : ''}</h2>
+        <span className="num" style={{ marginLeft: 'auto', fontSize: '0.9rem', fontWeight: 700 }}>
+          {fmtCount(latestData[ppgKey(latestKey)])}
+        </span>
       </div>
-      <ResponsiveContainer width="100%" height="70%">
-        <LineChart data={ppgData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-          <XAxis {...ppgAxisProps} />
-          <YAxis stroke="var(--text-dim)" fontSize={11} domain={['auto', 'auto']} width={58}
-                 label={{ value: ppgAc ? 'AC counts' : 'counts', angle: -90, position: 'insideLeft', fill: 'var(--text-dim)', fontSize: 11, style: { textAnchor: 'middle' } }} />
-          <Tooltip {...ppgTooltip} />
-          {keys.map((k, idx) => (
-            (latestData.ppgMask & (1 << idx)) !== 0 &&
-            <Line key={k} type="monotone" dataKey={ppgKey(k)} stroke={colors[idx]}
-                  strokeWidth={2} activeDot={false}
-                  dot={makeDot(idx === firstLive, (ppgYield[idx + 1] ?? 1) < SPARSE_YIELD)}
-                  name={`S${idx + 1}`} isAnimationActive={false} />
-          ))}
-        </LineChart>
-      </ResponsiveContainer>
-      <div className="num" style={{ textAlign: 'right', fontSize: '1.25rem', fontWeight: '700' }}>
-        {fmtCount(latestData[ppgKey(latestKey)])}
+      <div className="chart-body">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={ppgData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis {...ppgAxisProps} />
+            <YAxis stroke="var(--text-dim)" fontSize={10} domain={['auto', 'auto']} width={48} />
+            <Tooltip {...ppgTooltip} />
+            {keys.map((k, idx) => (
+              (latestData.ppgMask & (1 << idx)) !== 0 &&
+              <Line key={k} type="monotone" dataKey={ppgKey(k)} stroke={colors[idx]}
+                    strokeWidth={2} activeDot={false}
+                    dot={makeDot(idx === firstLive, (ppgYield[idx + 1] ?? 1) < SPARSE_YIELD)}
+                    name={`S${idx + 1}`} isAnimationActive={false} />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     </div>
     );
@@ -359,11 +384,11 @@ const Dashboard = () => {
     <div className="dashboard-container">
       {/* Header Section */}
       <header className="glass-card header-card">
-        <div>
+        <div style={{ minWidth: 0 }}>
           <h1>CPAP PI Dashboard - Full_v2</h1>
-          <p style={{ color: 'var(--text-dim)', fontSize: '0.875rem', margin: '4px 0 0 0' }}>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.7rem', margin: '2px 0 0 0', whiteSpace: 'nowrap' }}>
             4× PPG @ {latestData.ppgRate || 0}Hz · 4× Baro @ {latestData.baroRate || 0}Hz ·
-            3× SHT40 · 3× TMP117 · mask {latestData.maskPresent ? 'attached' : '—'} ·
+            mask {latestData.maskPresent ? 'attached' : '—'} ·
             link {latestData.bleDecim > 1
               ? <span style={{ color: 'var(--accent-amber)' }}>paced ×{latestData.bleDecim}</span>
               : 'full rate'}{latestData.bleDrops > 0 &&
@@ -457,8 +482,8 @@ const Dashboard = () => {
             onClick={toggleRecording}
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            {isRecording ? <Square size={16} /> : <Play size={16} />}
-            {isRecording ? 'Stop & Save CSV' : 'Start Recording'}
+            {isRecording ? <Square size={14} /> : <Play size={14} />}
+            {isRecording ? 'Save CSV' : 'Record'}
           </button>
 
           {!isConnected ? (
@@ -469,64 +494,17 @@ const Dashboard = () => {
         </div>
       </header>
 
-      {/* Environment / status telemetry */}
-      <div className="glass-card env-card">
-        {/* SHT40: humidity is the headline, its air temperature sits under it */}
-        <div className="telemetry-item">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-            <Droplets color="var(--accent-blue)" size={16} />
-            <span className="telemetry-label">RH % (1/2/3)</span>
-          </div>
-          <div className="telemetry-value" style={{ fontSize: '1.25rem' }}>
-            {fmt1(latestData.sht1h)}/{fmt1(latestData.sht2h)}/{fmt1(latestData.sht3h)}
-          </div>
-          <div className="telemetry-sub">
-            <Thermometer color="var(--text-dim)" size={11} />
-            <span>Air {fmt1(latestData.sht1t)}/{fmt1(latestData.sht2t)}/{fmt1(latestData.sht3t)} °C</span>
-          </div>
-        </div>
-
-        <div className="telemetry-item">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-            <Thermometer color="var(--accent-amber)" size={16} />
-            <span className="telemetry-label">Skin °C (1/2/3)</span>
-          </div>
-          <div className="telemetry-value" style={{ fontSize: '1.25rem' }}>
-            {fmt1(latestData.tmp1)}/{fmt1(latestData.tmp2)}/{fmt1(latestData.tmp3)}
-          </div>
-        </div>
-
-        <div className="telemetry-item" style={{ borderLeft: '1px solid var(--border-glass)', paddingLeft: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-            <BatteryMedium color="var(--accent-green)" size={16} />
-            <span className="telemetry-label">Battery</span>
-          </div>
-          <div className="telemetry-value" style={{ fontSize: '1.75rem' }}>
-            {((latestData.vbat || 0) / 1000).toFixed(2)}<span className="telemetry-unit">V</span>
-          </div>
-        </div>
-
-        <div className="telemetry-item">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-            <Gauge color="var(--accent-yellow)" size={16} />
-            <span className="telemetry-label">SD</span>
-          </div>
-          <div className="telemetry-value" style={{ fontSize: '1.75rem' }}>
-            {latestData.sdOk ? 'OK' : '--'}
-          </div>
-        </div>
-      </div>
+      {/* Telemetry + chart controls, one slim row */}
+      {stripRow}
 
       {splitView ? (
         <>
           {/* Split view: one card per live signal (pressure always full buffer) */}
-          {baroControls}
           {liveBaro.map(b => (
             <MiniChart key={`p${b + 1}`} title={`Pressure ${b + 1}`} dataKey={baroKey(`p${b + 1}`)}
                        color={BARO_COLORS[b]} data={baroData} xAxis={timeAxisProps} tooltipFmt={fmtElapsed}
                        latest={fmt1(baroLatest(b + 1) ?? undefined)} unit={baroUnit} />
           ))}
-          {windowControls}
           {livePpg.map(s => (
             <React.Fragment key={`ppg${s}`}>
               <MiniChart title={`PPG ${s + 1} Red${ppgAc ? ' (AC)' : ''}`} dataKey={ppgKey(`r${s + 1}`)}
@@ -546,33 +524,31 @@ const Dashboard = () => {
         </>
       ) : (
         <>
-          {/* Overlay view: grouped multi-line charts */}
-          <div className="glass-card force-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <Gauge color="var(--accent-amber)" size={20} />
-              <h2>Contact Pressure (MS5611 ×4)</h2>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
-                {baroControlGroup}
-              </div>
+          {/* Overlay view: 2x2 grid — pressure + three PPG charts */}
+          <div className="glass-card force-card chart-card">
+            <div className="chart-head">
+              <Gauge color="var(--accent-amber)" size={15} />
+              <h2 style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>Contact Pressure ×4 <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>({baroUnit})</span></h2>
+              <span className="chart-footnote" style={{ marginLeft: 'auto' }}>{baroBaseText}</span>
             </div>
-            <ResponsiveContainer width="100%" height="74%">
-              <LineChart data={baroData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis {...timeAxisProps} />
-                <YAxis stroke="var(--text-dim)" fontSize={12} width={58} domain={['auto', 'auto']} label={{ value: baroUnit, angle: -90, position: 'insideLeft', fill: 'var(--text-dim)', style: { textAnchor: 'middle' } }} />
-                <Tooltip {...scalarTooltip} />
-                <Legend />
-                {liveBaro.map((b, idx) => (
-                  <Line key={b} type="monotone" dataKey={baroKey(`p${b + 1}`)} stroke={BARO_COLORS[b]}
-                        strokeWidth={2} dot={idx === 0 ? markDot : false} activeDot={false}
-                        name={`P${b + 1}`} isAnimationActive={false} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-            <div className="chart-footnote">{baroBaseText}</div>
+            <div className="chart-body">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={baroData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis {...timeAxisProps} />
+                  <YAxis stroke="var(--text-dim)" fontSize={10} width={48} domain={['auto', 'auto']} />
+                  <Tooltip {...scalarTooltip} />
+                  <Legend wrapperStyle={{ fontSize: 10 }} iconSize={8} height={14} />
+                  {liveBaro.map((b, idx) => (
+                    <Line key={b} type="monotone" dataKey={baroKey(`p${b + 1}`)} stroke={BARO_COLORS[b]}
+                          strokeWidth={2} dot={idx === 0 ? markDot : false} activeDot={false}
+                          name={`P${b + 1}`} isAnimationActive={false} />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
-          {windowControls}
           {ppgOverlayChart('PPG Red (×4)', 'var(--accent-red)', ['r1', 'r2', 'r3', 'r4'], PPG_RED_COLORS, 'r1')}
           {ppgOverlayChart('PPG IR (×4)', 'var(--accent-violet)', ['i1', 'i2', 'i3', 'i4'], PPG_IR_COLORS, 'i1')}
           {ppgOverlayChart('PPG Green (×4)', 'var(--accent-green)', ['g1', 'g2', 'g3', 'g4'], PPG_GREEN_COLORS, 'g1')}
