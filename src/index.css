@@ -1,6 +1,6 @@
 :root {
   font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  line-height: 1.35;
   font-weight: 400;
 
   color-scheme: dark;
@@ -12,39 +12,67 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Color Palette */
-  --bg-deep: #0b0f19;
-  --bg-card: rgba(23, 32, 51, 0.7);
-  --border-glass: rgba(255, 255, 255, 0.1);
-  --accent-red: #ff4d4d;
-  --accent-green: #00f291;
-  --accent-blue: #00d4ff;
-  --accent-violet: #bb86fc;
-  --accent-yellow: #fbbf24;
-  --accent-amber: #f59e0b;
-  --text-dim: #94a3b8;
+  /* Sweet-neon palette on near-black. Series (site) colors validated
+     with the dataviz palette checker on surface #0f111b: CVD worst
+     adjacent dE 16.0, normal-vision 28.2, contrast/chroma pass.
+     Lightness (0.70-0.82) sits deliberately ABOVE the dark-mode band
+     (0.48-0.67) — intentional for the neon look on thin line marks;
+     legends/tooltips/columns carry identity as secondary encoding. */
+  --bg-deep: #05050a;
+  --bg-card: rgba(16, 18, 30, 0.72);
+  --border-glass: rgba(0, 229, 255, 0.12);
+  --accent-red: #ff2d78;
+  --accent-green: #2ee880;
+  --accent-blue: #00e5ff;
+  --accent-violet: #c05cff;
+  --accent-yellow: #ffe14d;
+  --accent-amber: #f0b000;
+  --text-dim: #93a0c2;
+}
+
+html, body {
+  height: 100%;
 }
 
 body {
   margin: 0;
   display: flex;
   min-width: 320px;
-  min-height: 100vh;
-  background: radial-gradient(circle at top right, #1e293b, var(--bg-deep));
+  /* Twin neon glows — magenta top-right, cyan bottom-left — on black */
+  background:
+    radial-gradient(1100px circle at 90% -10%, rgba(255, 45, 150, 0.14), transparent 55%),
+    radial-gradient(900px circle at -10% 110%, rgba(0, 229, 255, 0.10), transparent 50%),
+    var(--bg-deep);
 }
 
+/* One-screen layout: the app owns exactly the viewport height and the
+   chart rows shrink/grow to fit it — no page scrolling. Below the
+   min-height floor a scrollbar appears rather than clipping content. */
 #root {
   width: 100%;
+  height: 100vh;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 0.5rem 0.75rem;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+/* App.jsx wraps the dashboard in <div class="App"> — keep the
+   percentage-height chain from #root down to the grid intact. */
+.App {
+  height: 100%;
 }
 
 .dashboard-container {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
-  gap: 1.5rem;
-  max-width: 1400px;
-  margin: 0 auto;
+  /* Row 1 header, row 2 telemetry/controls strip; every implicit row
+     after that (the chart rows) splits the remaining height evenly. */
+  grid-template-rows: auto auto;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 0.5rem;
+  height: 100%;
+  min-height: 540px;
 }
 
 .glass-card {
@@ -52,15 +80,14 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-glass);
-  border-radius: 1.5rem;
-  padding: 1.5rem;
+  border-radius: 0.9rem;
+  padding: 0.6rem 0.9rem;
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease;
 }
 
 .glass-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+  box-shadow: 0 10px 36px 0 rgba(0, 0, 0, 0.45);
 }
 
 .header-card {
@@ -68,101 +95,123 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
 }
 
-.ppg-sub-card {
-  grid-column: span 12;
-  height: 200px;
+/* Chart cards fill whatever height their grid row provides */
+.chart-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.chart-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  min-width: 0;
+}
+.chart-body {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-.env-card {
+/* Overlay view: 2x2 grid (pressure + 3 PPG) */
+.ppg-sub-card,
+.force-card {
+  grid-column: span 6;
+}
+
+/* Split view: mini charts 4-across */
+.mini-card {
+  grid-column: span 3;
+}
+
+/* Visualized view: three mask heatmaps side by side */
+.viz-card {
+  grid-column: span 4;
+}
+
+/* Telemetry + chart controls in ONE slim row */
+.strip-card {
   grid-column: span 12;
   display: flex;
   flex-direction: row;
-  justify-content: space-around;
-  height: 100px;
-}
-
-.force-card {
-  grid-column: span 12;
-  height: 300px;
-}
-
-/* Split view: one signal per card, full width */
-.mini-card {
-  grid-column: span 12;
-  height: 180px;
-}
-
-/* Board tabs (multi-board): one tab per connected board */
-.board-tabs {
-  grid-column: span 12;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
   align-items: center;
+  gap: 1rem;
+  padding: 0.35rem 0.9rem;
+  min-width: 0;
 }
-
-.board-tab {
+.strip-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  background: var(--bg-card);
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+.strip-label {
+  font-size: 0.68rem;
   color: var(--text-dim);
-  border: 1px solid var(--border-glass);
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
-
-.board-tab.active {
-  background: var(--accent-blue);
-  color: #000;
+.strip-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
 }
-
-.board-tab-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
+.strip-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-glass);
+  flex: 0 0 auto;
 }
 
 .status-badge {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
   border-radius: 2rem;
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .status-online {
-  background: rgba(0, 242, 145, 0.1);
+  background: rgba(46, 232, 128, 0.1);
   color: var(--accent-green);
-  border: 1px solid rgba(0, 242, 145, 0.2);
+  border: 1px solid rgba(46, 232, 128, 0.25);
 }
 
 .status-offline {
-  background: rgba(255, 77, 77, 0.1);
+  background: rgba(255, 45, 120, 0.1);
   color: var(--accent-red);
-  border: 1px solid rgba(255, 77, 77, 0.2);
+  border: 1px solid rgba(255, 45, 120, 0.25);
 }
 
 button {
   background: var(--accent-blue);
   color: #000;
   border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.6rem;
   font-weight: 700;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 button:hover {
   filter: brightness(1.2);
-  transform: scale(1.05);
+}
+
+/* Disabled controls stay in place, just dimmed and inert */
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
 }
 
 button.disconnect {
@@ -177,34 +226,174 @@ button.recording {
   animation: pulse 2s infinite;
 }
 
+/* Stop/Resume — freeze the display without disconnecting */
+button.pause {
+  background: transparent;
+  color: var(--accent-violet);
+  border: 1px solid var(--accent-violet);
+}
+button.pause.active { background: var(--accent-violet); color: #000; }
+
+/* Event marker button */
+button.mark {
+  background: transparent;
+  color: var(--accent-yellow);
+  border: 1px solid var(--accent-yellow);
+}
+
+/* Demo mode — synthetic stream, no hardware needed */
+button.demo {
+  background: transparent;
+  color: var(--accent-amber);
+  border: 1px solid var(--accent-amber);
+}
+button.demo.active { background: var(--accent-amber); color: #000; }
+
+.status-paused {
+  background: rgba(192, 92, 255, 0.1);
+  color: var(--accent-violet);
+  border: 1px solid rgba(192, 92, 255, 0.25);
+}
+
+/* Any live numeric readout: digits update in place */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Offline-sensor warning (rides at the end of the strip) */
+.offline-note {
+  font-size: 0.72rem;
+  color: var(--accent-amber);
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* Small caption inline in a chart header (e.g. pressure tare baseline) */
+.chart-footnote {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.toolbar-label {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Segmented control (RTT/BLE, Overlay/Split) */
+.segmented {
+  display: flex;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.6rem;
+  padding: 0.15rem;
+  border: 1px solid var(--border-glass);
+}
+button.segment {
+  background: transparent;
+  color: var(--text-dim);
+  padding: 0.22rem 0.55rem;
+  font-size: 0.76rem;
+}
+button.segment:hover { transform: none; filter: none; color: #e2e8f0; }
+button.segment.active { background: var(--accent-blue); color: #000; }
+
+/* Vertical stacked selector (RTT/BLE, Overlay/Split) — pick one, top or bottom */
+.segmented.vertical {
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.segmented.vertical button.segment {
+  width: 100%;
+  justify-content: flex-start;
+  display: flex;
+  align-items: center;
+  border-radius: 0.45rem;
+  padding: 0.2rem 0.4rem;
+}
+
+/* Filter toggle + smoothing strength stacked in one compact column */
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border-glass);
+  border-radius: 0.6rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+.filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.filter-row-label {
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.filter-row input {
+  width: 2.4rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glass);
+  border-radius: 0.4rem;
+  color: #e2e8f0;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.filter-row input::-webkit-outer-spin-button,
+.filter-row input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.filter-row input:focus { outline: 1px solid var(--accent-green); }
+
+/* iOS-style toggle switch (Filter on/off) */
+.switch {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex: 0 0 auto;
+}
+.switch:hover { transform: none; filter: none; }
+.switch.on { background: var(--accent-green); }
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s ease;
+}
+.switch.on .switch-knob { transform: translateX(14px); }
+
 @keyframes pulse {
   0% { opacity: 1; }
   50% { opacity: 0.6; }
   100% { opacity: 1; }
-}
-
-.telemetry-item {
-  display: flex;
-  flex-direction: column;
-}
-
-.telemetry-label {
-  font-size: 0.875rem;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.telemetry-value {
-  font-size: 2.5rem;
-  font-weight: 800;
-  color: #fff;
-}
-
-.telemetry-unit {
-  font-size: 1rem;
-  color: var(--text-dim);
-  margin-left: 0.25rem;
 }
 
 h1, h2 {
@@ -212,8 +401,9 @@ h1, h2 {
 }
 
 h1 {
-  font-size: 1.5rem;
-  background: linear-gradient(to right, #fff, var(--text-dim));
+  font-size: 1.05rem;
+  background: linear-gradient(to right, var(--accent-blue), #ff4db8);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  white-space: nowrap;
 }
