@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { Activity, Thermometer, Droplets, BatteryMedium, Play, Square, Pause, Bluetooth, Cable, Gauge, LayoutGrid, Layers, FlaskConical, Flag, Map } from 'lucide-react';
 import { useComm, CH_OF } from './useComm';
+import { isNative } from './bleTransport';
 import MaskHeatmap from './MaskHeatmap';
 import { BARO_POS, SHT_POS, TMP_POS } from './maskGeometry';
 
@@ -409,24 +410,28 @@ const Dashboard = () => {
             slot — buttons enable/disable with state instead of appearing
             and disappearing. */}
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <div className="segmented vertical" style={{ opacity: streaming ? 0.35 : 1 }}>
-            <button
-              className={`segment ${commMode === 'rtt' ? 'active' : ''}`}
-              disabled={streaming}
-              onClick={() => setCommMode('rtt')}
-            >
-              <Cable size={16} style={{ marginRight: '0.5rem' }} />
-              RTT (wired)
-            </button>
-            <button
-              className={`segment ${commMode === 'bluetooth' ? 'active' : ''}`}
-              disabled={streaming}
-              onClick={() => setCommMode('bluetooth')}
-            >
-              <Bluetooth size={16} style={{ marginRight: '0.5rem' }} />
-              BLE
-            </button>
-          </div>
+          {/* Interface toggle — the native tablet app is BLE-only
+              (RTT needs the localhost J-Link bridge on a PC) */}
+          {!isNative && (
+            <div className="segmented vertical" style={{ opacity: streaming ? 0.35 : 1 }}>
+              <button
+                className={`segment ${commMode === 'rtt' ? 'active' : ''}`}
+                disabled={streaming}
+                onClick={() => setCommMode('rtt')}
+              >
+                <Cable size={16} style={{ marginRight: '0.5rem' }} />
+                RTT (wired)
+              </button>
+              <button
+                className={`segment ${commMode === 'bluetooth' ? 'active' : ''}`}
+                disabled={streaming}
+                onClick={() => setCommMode('bluetooth')}
+              >
+                <Bluetooth size={16} style={{ marginRight: '0.5rem' }} />
+                BLE
+              </button>
+            </div>
+          )}
 
           {/* Overlay / Split / Visualized — stacked, pick one (always available) */}
           <div className="segmented vertical">

@@ -1,8 +1,6 @@
 import { useState, useRef } from 'react';
+import { isNative, requestAndConnect, saveCsv, shareFiles } from './bleTransport';
 
-const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const NUS_TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
-const NUS_RX_CHARACTERISTIC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const RTT_BRIDGE_URL = 'ws://localhost:8765'; // scripts/rtt_bridge.py
 
 // Binary protocol v2 — must match firmware src/comm/comm_protocol.h
@@ -57,9 +55,8 @@ export const useComm = () => {
   const isRecordingRef = useRef(false);
   const isFilteredRef = useRef(false);
   const isPausedRef = useRef(false);
-  const deviceRef = useRef(null);
+  const connRef = useRef(null);     // BLE transport handle (write/disconnect)
   const wsRef = useRef(null);
-  const rxCharRef = useRef(null);   // NUS RX, kept for periodic time re-sync
   const tsyncTimerRef = useRef(null);
   const demoTimerRef = useRef(null);
   const demoTickRef = useRef(0);
@@ -364,43 +361,42 @@ export const useComm = () => {
   // SD only, never on BLE, so nothing new to parse here). Harmless to
   // repeat; each board keeps its own clock.
   const sendTimeSync = async () => {
-    const rx = rxCharRef.current;
-    if (!rx) return;
+    const conn = connRef.current;
+    if (!conn) return;
     try {
       const sync = new ArrayBuffer(9);
       const sdv = new DataView(sync);
       sdv.setUint8(0, 0x54); // 'T'
       sdv.setBigUint64(1, BigInt(Date.now()), true);
-      await rx.writeValueWithoutResponse(sync);
+      await conn.write(sync);
     } catch (e) { /* link may be mid-drop; next interval retries */ }
   };
 
+  // Platform BLE lives behind src/bleTransport.js: Web Bluetooth on the
+  // web build, @capacitor-community/bluetooth-le in the Android app.
   const connectBluetooth = async () => {
     try {
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [{ namePrefix: 'KMM' }, { namePrefix: 'CPAP' }],
-        optionalServices: [NUS_SERVICE_UUID]
-      });
-
-      const server = await device.gatt.connect();
-      const service = await server.getPrimaryService(NUS_SERVICE_UUID);
-      const characteristic = await service.getCharacteristic(NUS_TX_CHARACTERISTIC_UUID);
-
-      deviceRef.current = device;
-      setIsConnected(true);
-
-      await characteristic.startNotifications();
       let textBuffer = "";
       const decoder = new TextDecoder();
 
-      characteristic.addEventListener('characteristicvaluechanged', (event) => {
-        const value = event.target.value;
-        if (processBinaryFrame(value)) return;
-        textBuffer += decoder.decode(value);
-        const lines = textBuffer.split('\n');
-        textBuffer = lines.pop();
-        for (let line of lines) processDataLine(line);
+      const conn = await requestAndConnect({
+        onData: (value) => {
+          if (processBinaryFrame(value)) return;
+          textBuffer += decoder.decode(value);
+          const lines = textBuffer.split('\n');
+          textBuffer = lines.pop();
+          for (let line of lines) processDataLine(line);
+        },
+        onDisconnect: () => {
+          clearInterval(tsyncTimerRef.current);
+          tsyncTimerRef.current = null;
+          connRef.current = null;
+          setIsConnected(false);
+        },
       });
+
+      connRef.current = conn;
+      setIsConnected(true);
 
       // Ensure binary mode + sync the board's wall clock (one 'T'
       // command retroactively timestamps the whole boot's SD log).
@@ -408,20 +404,11 @@ export const useComm = () => {
       // re-syncing while connected — the offline SD reader
       // drift-corrects between TSYNC records (protocol spec v2.1).
       try {
-        const rx = await service.getCharacteristic(NUS_RX_CHARACTERISTIC_UUID);
-        rxCharRef.current = rx;
-        await rx.writeValueWithoutResponse(new Uint8Array([0x42])); // 'B'
+        await conn.write(new Uint8Array([0x42])); // 'B'
         await sendTimeSync();
         clearInterval(tsyncTimerRef.current);
         tsyncTimerRef.current = setInterval(sendTimeSync, TSYNC_INTERVAL_MS);
       } catch (e) { /* RX optional */ }
-
-      device.addEventListener('gattserverdisconnected', () => {
-        clearInterval(tsyncTimerRef.current);
-        tsyncTimerRef.current = null;
-        rxCharRef.current = null;
-        setIsConnected(false);
-      });
 
     } catch (err) {
       console.error('Bluetooth Error:', err);
@@ -437,11 +424,13 @@ export const useComm = () => {
     setHistory([]);                // don't mix demo samples with real data
     isPausedRef.current = false;   // never start a connection paused
     setIsPaused(false);
-    if (commMode === 'rtt') connectRtt();
+    // RTT needs the localhost J-Link bridge — web portal only
+    if (commMode === 'rtt' && !isNative) connectRtt();
     else connectBluetooth();
   };
 
   const disconnect = () => {
+    try { connRef.current?.disconnect(); } catch (e) { /* already down */ }
     window.location.reload();
   };
 
@@ -464,7 +453,8 @@ export const useComm = () => {
     isFilteredRef.current = nextState;
   };
 
-  const exportToCsv = () => {
+  // Web: browser download. Android app: Documents + share sheet.
+  const exportToCsv = async () => {
     const rows = recordedDataRef.current;
     if (rows.length === 0) return;
     // Time_s = seconds since the first recorded sample (device timebase),
@@ -485,13 +475,13 @@ export const useComm = () => {
     const csvContent = rows.map((d, i) =>
       ((d.timestamp - t0) / 1000).toFixed(3) + ',' + cols.map(c => d[c] ?? '').join(',') + markCols(i)
     ).join('\n');
-    const blob = new Blob([headers + csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'CPAP_PI_Data.csv';
-    a.click();
-    window.URL.revokeObjectURL(url);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    try {
+      const uri = await saveCsv(`CPAP_PI_Data_${stamp}.csv`, headers + csvContent);
+      if (uri) await shareFiles([uri]);
+    } catch (e) {
+      console.error('CSV save failed:', e);
+    }
   };
 
   return {

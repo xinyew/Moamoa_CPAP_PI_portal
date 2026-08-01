@@ -2,9 +2,11 @@ import { Capacitor } from '@capacitor/core';
 
 // One BLE central connection to a KMM PMask board, behind a uniform
 // handle so useComm never touches the platform APIs directly.
-//   Web build  -> Web Bluetooth (Chrome/Edge)
+//   Web build   -> Web Bluetooth (Chrome/Edge)
 //   Android app -> @capacitor-community/bluetooth-le (native central)
-// Both deliver NUS TX notifications as DataView to onData.
+// Both deliver NUS TX notifications as DataView to onData, and both
+// expose write() to the NUS RX characteristic for the command bytes
+// ('B' binary mode, 'T' + epoch-ms wall-clock sync, 'J' JSON debug).
 
 export const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 export const NUS_TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
@@ -12,12 +14,11 @@ export const NUS_RX_CHARACTERISTIC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'
 
 export const isNative = Capacitor.isNativePlatform();
 
-const CMD_BINARY = 0x42; // 'B' — force firmware into binary mode
-
 /*
  * requestAndConnect({ onData, onDisconnect }) -> {
- *   id:        stable device id (per platform),
- *   name:      advertised name,
+ *   id:           stable device id (per platform),
+ *   name:         advertised name,
+ *   write(bytes): write-without-response to NUS RX (Uint8Array/ArrayBuffer),
  *   disconnect(): close the link,
  * }
  * Shows the platform's device picker (one device per call).
@@ -47,17 +48,19 @@ async function webRequestAndConnect({ onData, onDisconnect }) {
     onData(event.target.value); // DataView
   });
 
-  // Ensure the firmware is in binary mode
+  let rx = null;
   try {
-    const rx = await service.getCharacteristic(NUS_RX_CHARACTERISTIC_UUID);
-    await rx.writeValueWithoutResponse(new Uint8Array([CMD_BINARY]));
-  } catch (e) { /* RX optional */ }
+    rx = await service.getCharacteristic(NUS_RX_CHARACTERISTIC_UUID);
+  } catch (e) { /* RX optional on very old firmware */ }
 
   device.addEventListener('gattserverdisconnected', () => onDisconnect());
 
   return {
     id: device.id || `ble-${Date.now()}`,
     name: device.name || 'KMM board',
+    write: async (bytes) => {
+      if (rx) await rx.writeValueWithoutResponse(bytes);
+    },
     disconnect: () => {
       try {
         if (device.gatt?.connected) device.gatt.disconnect();
@@ -83,6 +86,12 @@ async function getBleClient() {
   return bleClientPromise;
 }
 
+const asDataView = (bytes) => {
+  if (bytes instanceof DataView) return bytes;
+  if (bytes instanceof ArrayBuffer) return new DataView(bytes);
+  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+};
+
 async function nativeRequestAndConnect({ onData, onDisconnect }) {
   const BleClient = await getBleClient();
 
@@ -103,18 +112,17 @@ async function nativeRequestAndConnect({ onData, onDisconnect }) {
     (value) => onData(value) // DataView
   );
 
-  try {
-    await BleClient.writeWithoutResponse(
-      device.deviceId,
-      NUS_SERVICE_UUID,
-      NUS_RX_CHARACTERISTIC_UUID,
-      new DataView(new Uint8Array([CMD_BINARY]).buffer)
-    );
-  } catch (e) { /* RX optional */ }
-
   return {
     id: device.deviceId,
     name: device.name || 'KMM board',
+    write: async (bytes) => {
+      await BleClient.writeWithoutResponse(
+        device.deviceId,
+        NUS_SERVICE_UUID,
+        NUS_RX_CHARACTERISTIC_UUID,
+        asDataView(bytes)
+      );
+    },
     disconnect: () => {
       BleClient.disconnect(device.deviceId).catch(() => {});
     },
@@ -138,9 +146,7 @@ export async function saveCsv(filename, content) {
     return null;
   }
 
-  const [{ Filesystem, Directory, Encoding }] = await Promise.all([
-    import('@capacitor/filesystem'),
-  ]);
+  const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
   const result = await Filesystem.writeFile({
     path: filename,
     data: content,
@@ -155,7 +161,7 @@ export async function shareFiles(uris) {
   try {
     const { Share } = await import('@capacitor/share');
     await Share.share({
-      title: 'KMM PMask recordings',
+      title: 'KMM PMask recording',
       files: uris,
     });
   } catch (e) {
