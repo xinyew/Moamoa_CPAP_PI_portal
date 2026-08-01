@@ -45,6 +45,37 @@ Android app branch.
 
 ---
 
+## Session 2026-08-01 (cont.) — rev2 app ported to the Android tablet
+
+User request: (1) sync the session log to main (done, main 531b718) and
+(2) port the up-to-date web app to the tablet app.
+
+On `android-tablet-app` (commits 0e1d726 + 2aa85ef):
+- rev2-enhancement-xinye src brought over wholesale (compact layout,
+  neon theme, Visualized view, rev2 fixes, v2.1 tsync).
+- IMPORTANT TRADE-OFF: this REPLACED the multi-board (10 tabs)
+  dashboard that previously lived on this branch — the rev2 line is
+  single-board. Multi-board on the rev2 codebase is still future work;
+  the old multi-board code survives on `main` and in this branch's
+  history (a886b97 and earlier).
+- `src/bleTransport.js` rewritten to the rev2 interface: uniform handle
+  {id, name, write, disconnect} — Web Bluetooth on web, BleClient on
+  Android. write() carries the RX commands, so 'B' + 'T' (initial and
+  10-min re-sync) work identically natively. CSV export: browser
+  download on web; Documents + share sheet on Android (timestamped).
+  RTT toggle hidden natively; connect() forces BLE in the app.
+- Built (JAVA_HOME + gradlew assembleDebug), installed on SM-X820,
+  verified fullscreen via adb screenshots: compact neon UI identical to
+  web, no RTT toggle, native scanner opens on Connect, demo mode
+  streams, Visualized view renders the 3 mask-ring heatmaps.
+- NOT retested live: a real board link (no board was advertising —
+  "No device found"; the board from the 07-30 test was powered off).
+  The native BLE path (requestDevice/connect/notifications/write) is
+  the same plugin sequence that streamed live on 07-30; the new write()
+  wrapper is the only delta. Retest when a board is next powered.
+
+---
+
 ## Session 2026-08-01 (cont.) — Visualized view: mask-shape heatmaps
 
 User request: third view ("Visualized") beside Overlay/Split — heatmaps
