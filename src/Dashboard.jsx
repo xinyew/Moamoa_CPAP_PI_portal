@@ -77,9 +77,12 @@ const yieldOf = (rows, key) => {
   return n / rows.length;
 };
 
-// Single-signal card used by split view — fills its grid cell
-const MiniChart = ({ title, dataKey, color, data, latest, unit, xAxis, tooltipFmt, dot }) => (
-  <div className="glass-card mini-card chart-card">
+// Single-signal card used by split view — fills its grid cell.
+// `lane` (0..3) pins the card to a fixed site column so the same sensor's
+// channels stack vertically even when other sites are offline.
+const MiniChart = ({ title, dataKey, color, data, latest, unit, xAxis, tooltipFmt, dot, lane }) => (
+  <div className="glass-card mini-card chart-card"
+       style={lane != null ? { gridColumn: `${lane * 3 + 1} / span 3` } : undefined}>
     <div className="chart-head" style={{ justifyContent: 'space-between' }}>
       <h2 style={{ fontSize: '0.78rem', color: color, whiteSpace: 'nowrap' }}>{title}</h2>
       <span className="num" style={{ fontSize: '0.85rem', fontWeight: 700 }}>
@@ -499,28 +502,28 @@ const Dashboard = () => {
 
       {splitView ? (
         <>
-          {/* Split view: one card per live signal (pressure always full buffer) */}
+          {/* Split view: one column per SITE — pressure on top, then that
+              site's Red/IR/Green stacked beneath it. Channel-major render
+              order + fixed lanes keep columns aligned even when a site is
+              offline (its lane simply stays empty). */}
           {liveBaro.map(b => (
-            <MiniChart key={`p${b + 1}`} title={`Pressure ${b + 1}`} dataKey={baroKey(`p${b + 1}`)}
+            <MiniChart key={`p${b + 1}`} lane={b} title={`Pressure ${b + 1}`} dataKey={baroKey(`p${b + 1}`)}
                        color={BARO_COLORS[b]} data={baroData} xAxis={timeAxisProps} tooltipFmt={fmtElapsed}
                        latest={fmt1(baroLatest(b + 1) ?? undefined)} unit={baroUnit} />
           ))}
-          {livePpg.map(s => (
-            <React.Fragment key={`ppg${s}`}>
-              <MiniChart title={`PPG ${s + 1} Red${ppgAc ? ' (AC)' : ''}`} dataKey={ppgKey(`r${s + 1}`)}
-                         color={PPG_RED_COLORS[s]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
+          {[
+            ['Red', 'r', PPG_RED_COLORS],
+            ['IR', 'i', PPG_IR_COLORS],
+            ['Green', 'g', PPG_GREEN_COLORS],
+          ].map(([label, ch, colors]) =>
+            livePpg.map(s => (
+              <MiniChart key={`${ch}${s + 1}`} lane={s}
+                         title={`PPG ${s + 1} ${label}${ppgAc ? ' (AC)' : ''}`} dataKey={ppgKey(`${ch}${s + 1}`)}
+                         color={colors[s]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
                          dot={makeDot(true, (ppgYield[s + 1] ?? 1) < SPARSE_YIELD)}
-                         latest={fmtCount(latestData[ppgKey(`r${s + 1}`)])} unit="counts" />
-              <MiniChart title={`PPG ${s + 1} IR${ppgAc ? ' (AC)' : ''}`} dataKey={ppgKey(`i${s + 1}`)}
-                         color={PPG_IR_COLORS[s]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
-                         dot={makeDot(true, (ppgYield[s + 1] ?? 1) < SPARSE_YIELD)}
-                         latest={fmtCount(latestData[ppgKey(`i${s + 1}`)])} unit="counts" />
-              <MiniChart title={`PPG ${s + 1} Green${ppgAc ? ' (AC)' : ''}`} dataKey={ppgKey(`g${s + 1}`)}
-                         color={PPG_GREEN_COLORS[s]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
-                         dot={makeDot(true, (ppgYield[s + 1] ?? 1) < SPARSE_YIELD)}
-                         latest={fmtCount(latestData[ppgKey(`g${s + 1}`)])} unit="counts" />
-            </React.Fragment>
-          ))}
+                         latest={fmtCount(latestData[ppgKey(`${ch}${s + 1}`)])} unit="counts" />
+            ))
+          )}
         </>
       ) : (
         <>
