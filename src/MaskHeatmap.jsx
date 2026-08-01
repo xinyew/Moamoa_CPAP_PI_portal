@@ -1,5 +1,5 @@
 import React from 'react';
-import { MASK_OUTLINE, MASK_VIEWBOX, MASK_CELLS, GRID_STEP } from './maskGeometry';
+import { MASK_PATH_D, MASK_VIEWBOX, MASK_CELLS, GRID_STEP } from './maskGeometry';
 
 /*
  * One heatmap of the mask flex board: inverse-distance-weighted field
@@ -71,7 +71,8 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt }) => {
              preserveAspectRatio="xMidYMid meet">
           <defs>
             <clipPath id={clipId}>
-              <polygon points={MASK_OUTLINE.map(p => p.join(',')).join(' ')} />
+              {/* even-odd: clip region is the ring (outer minus hole) */}
+              <path d={MASK_PATH_D} clipRule="evenodd" />
             </clipPath>
           </defs>
           <g clipPath={`url(#${clipId})`}>
@@ -83,8 +84,9 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt }) => {
                 ))
               : <rect x={x} y={y} width={w} height={h} fill="rgba(255,255,255,0.03)" />}
           </g>
-          <polygon points={MASK_OUTLINE.map(p => p.join(',')).join(' ')}
-                   fill="none" stroke="rgba(160,220,255,0.45)" strokeWidth="0.7" />
+          {/* one path strokes both the outer profile and the hole edge */}
+          <path d={MASK_PATH_D} fill="none"
+                stroke="rgba(160,220,255,0.45)" strokeWidth="0.7" />
           {sensors.map(s => (
             <g key={s.label}>
               <circle cx={s.x} cy={s.y} r="2.1"
