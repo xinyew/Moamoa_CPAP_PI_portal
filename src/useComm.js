@@ -11,6 +11,10 @@ const MAGIC = 0xC9A5;
 const TYPE_DATA = 0x11;   // 204 B
 const TYPE_STATUS = 0x12; // 43 B
 const TICK_MS = 10;
+// Re-send the 'T' wall-clock sync every 10 min while connected — the
+// board's RC clock drifts; repeats give the offline SD reader more
+// TSYNC records to drift-correct between (protocol spec v2.1).
+const TSYNC_INTERVAL_MS = 10 * 60 * 1000;
 
 const WAVE_KEYS = ['r1','i1','g1','r2','i2','g2','r3','i3','g3','r4','i4','g4'];
 // ~8 s at the 100 Hz sample rate — must exceed the longest selectable
@@ -55,6 +59,8 @@ export const useComm = () => {
   const isPausedRef = useRef(false);
   const deviceRef = useRef(null);
   const wsRef = useRef(null);
+  const rxCharRef = useRef(null);   // NUS RX, kept for periodic time re-sync
+  const tsyncTimerRef = useRef(null);
   const demoTimerRef = useRef(null);
   const demoTickRef = useRef(0);
 
@@ -353,6 +359,22 @@ export const useComm = () => {
     }
   };
 
+  // 'T' + u64 LE epoch-ms on NUS RX: firmware maps its monotonic uptime
+  // to wall clock and emits TSYNC records into the SD log (type 0x13 —
+  // SD only, never on BLE, so nothing new to parse here). Harmless to
+  // repeat; each board keeps its own clock.
+  const sendTimeSync = async () => {
+    const rx = rxCharRef.current;
+    if (!rx) return;
+    try {
+      const sync = new ArrayBuffer(9);
+      const sdv = new DataView(sync);
+      sdv.setUint8(0, 0x54); // 'T'
+      sdv.setBigUint64(1, BigInt(Date.now()), true);
+      await rx.writeValueWithoutResponse(sync);
+    } catch (e) { /* link may be mid-drop; next interval retries */ }
+  };
+
   const connectBluetooth = async () => {
     try {
       const device = await navigator.bluetooth.requestDevice({
@@ -381,18 +403,23 @@ export const useComm = () => {
       });
 
       // Ensure binary mode + sync the board's wall clock (one 'T'
-      // command retroactively timestamps the whole boot's SD log)
+      // command retroactively timestamps the whole boot's SD log).
+      // The board free-runs on an uncalibrated RC clock, so keep
+      // re-syncing while connected — the offline SD reader
+      // drift-corrects between TSYNC records (protocol spec v2.1).
       try {
         const rx = await service.getCharacteristic(NUS_RX_CHARACTERISTIC_UUID);
+        rxCharRef.current = rx;
         await rx.writeValueWithoutResponse(new Uint8Array([0x42])); // 'B'
-        const sync = new ArrayBuffer(9);
-        const sdv = new DataView(sync);
-        sdv.setUint8(0, 0x54); // 'T'
-        sdv.setBigUint64(1, BigInt(Date.now()), true);
-        await rx.writeValueWithoutResponse(sync);
+        await sendTimeSync();
+        clearInterval(tsyncTimerRef.current);
+        tsyncTimerRef.current = setInterval(sendTimeSync, TSYNC_INTERVAL_MS);
       } catch (e) { /* RX optional */ }
 
       device.addEventListener('gattserverdisconnected', () => {
+        clearInterval(tsyncTimerRef.current);
+        tsyncTimerRef.current = null;
+        rxCharRef.current = null;
         setIsConnected(false);
       });
 

@@ -45,6 +45,30 @@ Android app branch.
 
 ---
 
+## Session 2026-08-01 (cont.) — protocol v2.1: 'T' wall-clock sync complete
+
+User supplied the v2.1 protocol integration spec (adds RX command
+'T' 0x54 + u64 LE epoch-ms, 9 B total). Cross-checked against
+Moamoa_CPAP_PI_firmware @ 14f741f: confirmed TSYNC record type 0x13
+(16 B) is SD-LOG ONLY — never sent over BLE, portal parses nothing new.
+Firmware maps monotonic uptime -> wall clock retroactively for the whole
+boot; the offline doctor-facing SD reader (firmware repo 3af8d89)
+drift-corrects between TSYNC records.
+
+State on `rev2-enhancement-xinye`:
+- On-connect 'B' then 'T' write: ALREADY PRESENT (user's commit 5ce1366)
+  — the spec's own caution; verified before touching anything.
+- ADDED this session: periodic re-sync every 10 min while connected
+  (TSYNC_INTERVAL_MS). NUS RX characteristic kept in `rxCharRef`;
+  `sendTimeSync()` helper; interval started after the on-connect sync,
+  cleared on gattserverdisconnected (and 'T' failures are swallowed —
+  next interval retries). RTT path unchanged (bridge is read-only).
+- For the future multi-board port (main branch): the spec requires ONE
+  sync per board connection + its own 10-min timer per store — put both
+  in the per-board store, not module-level.
+
+---
+
 ## Session 2026-08-01 (later still) — split-view site columns + sweet-neon theme
 
 On `rev2-enhancement-xinye`, after the compact layout:
