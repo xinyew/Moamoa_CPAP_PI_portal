@@ -45,6 +45,38 @@ Android app branch.
 
 ---
 
+## Session 2026-08-01 (later still) — split-view site columns + sweet-neon theme
+
+On `rev2-enhancement-xinye`, after the compact layout:
+
+1. Split view reorganized (552fbd3): channel-major render order + each
+   mini chart pinned to a fixed site lane (explicit grid-column), so
+   column N = Pressure N / Red N / IR N / Green N top-to-bottom, and an
+   offline site leaves an empty lane instead of shifting the grid.
+2. Sweet-neon theme (user request, replacing the slate/purple look):
+   - KEY DESIGN CHANGE: series color now follows the SITE, not the
+     channel. One fixed categorical palette everywhere:
+     S1 #2ee880 green / S2 #ff4db8 pink / S3 #f0b000 amber / S4 #00c4ea
+     cyan. Chart title/icon carries the channel. Split-view columns
+     inherit their site's color.
+   - Palette validated with the dataviz skill checker against surface
+     #0f111b: worst adjacent pair dE 16.0 (deutan), 28.2 (normal), all
+     >= 3:1 contrast, chroma pass. Lightness 0.70-0.82 sits ABOVE the
+     dark-mode band (0.48-0.67) DELIBERATELY — neon aesthetic on thin
+     line marks; legends/tooltips/columns are the secondary encoding.
+     (Same-hue 4-step ramps — the old approach — cannot pass the
+     separation floors on a dark surface; validator proved it.)
+   - CSS: bg #05050a with twin magenta/cyan radial glows, cyan-tinted
+     card borders, neon accent vars, cyan->pink title gradient, tinted
+     chart grid + tooltip bg.
+   - NOTE: user committed 5ce1366 mid-session (wall-clock 'T' sync in
+     useComm.js + .gitignore android/) — theme work rebased cleanly on
+     top; one grid-stroke edit had been clobbered by the file shuffle
+     and was reapplied.
+   - Verified in Chrome demo mode, Overlay + Split, one screen each.
+
+---
+
 ## Session 2026-08-01 — review of collaborator branch `rev2-enhancement`
 
 Reviewed (not merged) two branches pushed by ysw0624z:

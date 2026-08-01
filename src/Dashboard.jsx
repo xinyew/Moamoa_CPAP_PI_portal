@@ -12,13 +12,17 @@ import {
 import { Activity, Thermometer, Droplets, BatteryMedium, Play, Square, Pause, Bluetooth, Cable, Gauge, LayoutGrid, Layers, FlaskConical, Flag } from 'lucide-react';
 import { useComm, CH_OF } from './useComm';
 
-// Line colors per sensor site (1..4). Every shade must stay legible on the
-// near-black background — the old palette's darkest two (#7f1d1d, #4c1d95,
-// #14532d, #92400e) rendered as a barely-visible hash that read as noise.
-const PPG_RED_COLORS   = ['#fee2e2', '#fca5a5', '#f87171', '#ef4444'];
-const PPG_IR_COLORS    = ['#ede9fe', '#c4b5fd', '#a78bfa', '#8b5cf6'];
-const PPG_GREEN_COLORS = ['#dcfce7', '#86efac', '#4ade80', '#22c55e'];
-const BARO_COLORS      = ['#fef3c7', '#fde68a', '#fbbf24', '#f59e0b'];
+// Sweet-neon theme: color follows the SITE, not the channel. Each site
+// keeps ONE fixed neon color in every chart (and its split-view column),
+// so site 2 is pink wherever you look; the chart title/icon carries the
+// channel. Validated (dataviz checker, surface #0f111b): worst adjacent
+// pair dE 16.0 under deutan simulation, 28.2 normal vision, all >= 3:1
+// contrast. Sits above the dark-mode lightness band on purpose — neon.
+const SITE_COLORS = ['#2ee880', '#ff4db8', '#f0b000', '#00c4ea'];
+const PPG_RED_COLORS   = SITE_COLORS;
+const PPG_IR_COLORS    = SITE_COLORS;
+const PPG_GREEN_COLORS = SITE_COLORS;
+const BARO_COLORS      = SITE_COLORS;
 
 const fmt1 = (v) => (v === undefined ? '--' : (+v).toFixed(1));
 const fmt2 = (v) => (v == null ? '--' : (+v).toFixed(2));
@@ -39,7 +43,7 @@ const lastSeconds = (history, seconds) => {
 };
 
 // Shared dark tooltip; label shows elapsed seconds via labelFormatter set per chart.
-const tooltipContentStyle = { background: '#1e293b', border: '1px solid var(--border-glass)', borderRadius: '8px' };
+const tooltipContentStyle = { background: '#10121f', border: '1px solid var(--border-glass)', borderRadius: '8px' };
 const tooltipLabelStyle = { color: 'var(--text-dim)', fontSize: '0.75rem' };
 
 // Dot renderer. Draws the event-marker line (used instead of <ReferenceLine>
@@ -92,7 +96,7 @@ const MiniChart = ({ title, dataKey, color, data, latest, unit, xAxis, tooltipFm
     <div className="chart-body">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(140,220,255,0.07)" vertical={false} />
           <XAxis {...xAxis} />
           <YAxis stroke="var(--text-dim)" fontSize={10} domain={['auto', 'auto']} width={44} />
           <Tooltip contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle}
@@ -365,7 +369,7 @@ const Dashboard = () => {
       <div className="chart-body">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={ppgData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(140,220,255,0.07)" vertical={false} />
             <XAxis {...ppgAxisProps} />
             <YAxis stroke="var(--text-dim)" fontSize={10} domain={['auto', 'auto']} width={48} />
             <Tooltip {...ppgTooltip} />
@@ -537,7 +541,7 @@ const Dashboard = () => {
             <div className="chart-body">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={baroData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(140,220,255,0.07)" vertical={false} />
                   <XAxis {...timeAxisProps} />
                   <YAxis stroke="var(--text-dim)" fontSize={10} width={48} domain={['auto', 'auto']} />
                   <Tooltip {...scalarTooltip} />

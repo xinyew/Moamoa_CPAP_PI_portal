@@ -12,17 +12,22 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Color Palette */
-  --bg-deep: #0b0f19;
-  --bg-card: rgba(23, 32, 51, 0.7);
-  --border-glass: rgba(255, 255, 255, 0.1);
-  --accent-red: #ff4d4d;
-  --accent-green: #00f291;
-  --accent-blue: #00d4ff;
-  --accent-violet: #bb86fc;
-  --accent-yellow: #fbbf24;
-  --accent-amber: #f59e0b;
-  --text-dim: #94a3b8;
+  /* Sweet-neon palette on near-black. Series (site) colors validated
+     with the dataviz palette checker on surface #0f111b: CVD worst
+     adjacent dE 16.0, normal-vision 28.2, contrast/chroma pass.
+     Lightness (0.70-0.82) sits deliberately ABOVE the dark-mode band
+     (0.48-0.67) — intentional for the neon look on thin line marks;
+     legends/tooltips/columns carry identity as secondary encoding. */
+  --bg-deep: #05050a;
+  --bg-card: rgba(16, 18, 30, 0.72);
+  --border-glass: rgba(0, 229, 255, 0.12);
+  --accent-red: #ff2d78;
+  --accent-green: #2ee880;
+  --accent-blue: #00e5ff;
+  --accent-violet: #c05cff;
+  --accent-yellow: #ffe14d;
+  --accent-amber: #f0b000;
+  --text-dim: #93a0c2;
 }
 
 html, body {
@@ -33,7 +38,11 @@ body {
   margin: 0;
   display: flex;
   min-width: 320px;
-  background: radial-gradient(circle at top right, #1e293b, var(--bg-deep));
+  /* Twin neon glows — magenta top-right, cyan bottom-left — on black */
+  background:
+    radial-gradient(1100px circle at 90% -10%, rgba(255, 45, 150, 0.14), transparent 55%),
+    radial-gradient(900px circle at -10% 110%, rgba(0, 229, 255, 0.10), transparent 50%),
+    var(--bg-deep);
 }
 
 /* One-screen layout: the app owns exactly the viewport height and the
@@ -166,15 +175,15 @@ body {
 }
 
 .status-online {
-  background: rgba(0, 242, 145, 0.1);
+  background: rgba(46, 232, 128, 0.1);
   color: var(--accent-green);
-  border: 1px solid rgba(0, 242, 145, 0.2);
+  border: 1px solid rgba(46, 232, 128, 0.25);
 }
 
 .status-offline {
-  background: rgba(255, 77, 77, 0.1);
+  background: rgba(255, 45, 120, 0.1);
   color: var(--accent-red);
-  border: 1px solid rgba(255, 77, 77, 0.2);
+  border: 1px solid rgba(255, 45, 120, 0.25);
 }
 
 button {
@@ -236,9 +245,9 @@ button.demo {
 button.demo.active { background: var(--accent-amber); color: #000; }
 
 .status-paused {
-  background: rgba(187, 134, 252, 0.1);
+  background: rgba(192, 92, 255, 0.1);
   color: var(--accent-violet);
-  border: 1px solid rgba(187, 134, 252, 0.2);
+  border: 1px solid rgba(192, 92, 255, 0.25);
 }
 
 /* Any live numeric readout: digits update in place */
@@ -388,7 +397,7 @@ h1, h2 {
 
 h1 {
   font-size: 1.05rem;
-  background: linear-gradient(to right, #fff, var(--text-dim));
+  background: linear-gradient(to right, var(--accent-blue), #ff4db8);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   white-space: nowrap;
