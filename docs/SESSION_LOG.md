@@ -6,6 +6,51 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-01 — review of collaborator branch `rev2-enhancement`
+
+Reviewed (not merged) two branches pushed by ysw0624z:
+
+- `origin/rev2-enhancement` — ONE commit `96d5f57` ("Rev2: fix waveform
+  rendering, surface sensor faults, add pressure delta mode"), forked
+  from `b388e f2` = BEFORE this repo's multi-board refactor (919aba1) and
+  protocol README (b94f2bb). It rewrites `useComm.js`/`Dashboard.jsx`
+  on the old single-board architecture.
+- `origin/feature/dashboard-enhancements` — 4 earlier commits (demo
+  mode, markers, window/AC controls, docs), forked from f51f8df.
+  Superseded: rev2-enhancement carries all of it forward.
+
+What rev2 contains (verified against the diff + firmware source):
+1. Numeric Recharts time axis (type="number", dataMin/dataMax) — fixes
+   the ~9x timebase distortion at decimated-frame seams that made clean
+   waveforms look like noise. THIS BUG STILL EXISTS ON MAIN (multi-board
+   Dashboard kept the category axis).
+2. Dropout nulling — honours DATA validity masks (bytes 8/10) plus the
+   all-three-zero zero-fill signature (correct: firmware derives the
+   mask from the LAST tick only, verified in comm_manager.c). Baro 0 Pa
+   -> null. Single-channel zero kept (real dead-LED fault).
+3. Fault chips: OFFLINE / ALL-ZERO / per-site yield %, mapped to mux
+   channels; site visibility = STATUS mask OR actual data yield.
+4. SITE_MAP = [2,1,3,4]: display sites 1<->2 swapped (incl. bit-swapped
+   status masks) to match rev2 mask physical wiring. CAUTION: baked-in
+   hardware assumption — confirm whether rev1 masks / tablet-app boards
+   share this wiring before adopting globally.
+5. mbar -> mmHg (/133.322) + ABS/delta toggle + Tare; CSV format change
+   (Time_s first, Marker/Time (s) last); HISTORY_LEN 300->800; demo
+   mode, pause, markers (M), adjustable EMA, Full/5s window, RAW/AC;
+   Launch-CPAP-FULL-v2.bat (port 5172); title "CPAP PI Dashboard -
+   Full_v2".
+
+Assessment given to user: a git merge into main will conflict on nearly
+every hunk (same two files rewritten both sides). Correct path is a
+PORT onto main's per-board-store architecture (ingest changes into the
+per-board parser; UI onto the tabbed dashboard; decide per-board vs
+global for pause/tare/markers). Android app inherits via shared parser
+once ported. mmHg + site-swap need README updates; CSV schema change
+may affect downstream scripts. Port not yet started — awaiting user
+decision.
+
+---
+
 ## Session 2026-07-30 — protocol audit, multi-board (×10), Android tablet app
 
 User request (3 parts):
