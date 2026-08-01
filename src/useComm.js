@@ -380,10 +380,16 @@ export const useComm = () => {
         for (let line of lines) processDataLine(line);
       });
 
-      // Ensure the firmware is in binary mode
+      // Ensure binary mode + sync the board's wall clock (one 'T'
+      // command retroactively timestamps the whole boot's SD log)
       try {
         const rx = await service.getCharacteristic(NUS_RX_CHARACTERISTIC_UUID);
         await rx.writeValueWithoutResponse(new Uint8Array([0x42])); // 'B'
+        const sync = new ArrayBuffer(9);
+        const sdv = new DataView(sync);
+        sdv.setUint8(0, 0x54); // 'T'
+        sdv.setBigUint64(1, BigInt(Date.now()), true);
+        await rx.writeValueWithoutResponse(sync);
       } catch (e) { /* RX optional */ }
 
       device.addEventListener('gattserverdisconnected', () => {
