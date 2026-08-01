@@ -45,6 +45,33 @@ Android app branch.
 
 ---
 
+## Session 2026-08-01 (handoff) — protocol update received, NOT yet implemented
+
+Firmware commit 4c03bf3 (Moamoa_CPAP_PI_firmware) adds a 'P' sensing
+on/off command; full spec in that repo's docs/ble-protocol.md and
+docs/portal-integration.md. PORTAL WORK IS PENDING. Summary:
+- RX 'P' (0x50) + 1 byte: 0x00 sensing off (~10 mA saved), 0x01 on.
+  Idempotent, write-without-response, same RX char as 'B'/'T'.
+- STATUS flags byte @36 gains bit 2 = sensingOn (bit0 mask present,
+  bit1 SD logging). UI must derive the toggle from bit 2, NOT from the
+  last command sent. While off: DATA frames stop, STATUS keeps 1 Hz —
+  render "sensing paused" (gray charts, keep battery/mask), not a
+  broken stream.
+- Sensing runs only when remote-enable AND mask present; the board
+  auto-pauses when the mask is unplugged >=5 s and auto-resumes on
+  reattach — so bit 2 can clear without any 'P'. Distinguish via bit 0:
+  mask absent -> "mask disconnected"; present but bit2 clear ->
+  "paused by user".
+- State persists across BLE disconnects (boot default ON); on
+  reconnect read bit 2 to restore the toggle. Multi-board: send per
+  connection.
+- RENAME: the board now advertises CPAP_PI_Control (was
+  KMM_PMask_Control). Web Bluetooth filter already includes prefix
+  'CPAP' (kept alongside 'KMM'); the native scanner filters on the NUS
+  service UUID, so both keep working unchanged.
+
+---
+
 ## Session 2026-08-01 (cont.) — rev2 app ported to the Android tablet
 
 User request: (1) sync the session log to main (done, main 531b718) and
