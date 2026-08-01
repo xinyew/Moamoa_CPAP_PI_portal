@@ -6,6 +6,142 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-01 (later) — compact one-screen layout on `rev2-enhancement-xinye`
+
+User request: make the portal fit ONE screen with no scrolling (web first;
+the Android app will be updated LATER — explicitly deferred by the user).
+Working branch: `rev2-enhancement-xinye` (created from
+`origin/rev2-enhancement`; session log carried over from main).
+
+Layout architecture (src/index.css + src/Dashboard.jsx):
+- `#root` is 100vh (`overflow: auto` + container `min-height: 540px` as a
+  floor — below that a scrollbar appears instead of clipping).
+- NOTE: App.jsx wraps the dashboard in `<div class="App">`; that div needs
+  `height: 100%` or the whole percentage-height chain silently collapses
+  to the min-height floor (found live via computed styles).
+- `.dashboard-container`: 12-col grid, `grid-template-rows: auto auto`
+  (header, strip) + `grid-auto-rows: minmax(0, 1fr)` — every implicit
+  chart row splits the leftover height evenly, so BOTH views fit
+  automatically: Overlay = 2 rows (2x2), Split = 4 rows (4-across).
+- Chart cards are `.chart-card` flex columns (`.chart-head` auto +
+  `.chart-body` flex-1 min-height:0) with `ResponsiveContainer
+  height="100%"` — no fixed pixel chart heights anywhere anymore.
+- The old env-card + two toolbar cards merged into ONE `.strip-card` row:
+  RH / Air C / Skin C / battery / SD + Window Full-5s + PPG RAW-AC +
+  Pressure ABS-delta-Tare + fault note (ellipsized, tooltip carries detail).
+- Compacted: paddings, button/segment sizes, axis fonts 10px, axis height
+  16, Y-axis width 44-48, legend 14px (pressure chart only), PPG latest
+  value moved into the card header, header subtitle one line, Record
+  button labels shortened.
+- Overlay: pressure + 3 PPG each `span 6` (2x2). Split: minis `span 3`
+  (4-across; 16 cards + strip + header all on screen).
+
+Verified in Chrome (dev server :5199) with Demo mode: Overlay and Split
+both fill exactly one 1568x774 viewport, no scrollbars, all controls
+visible. Split = 16 readable charts.
+
+Not done yet (deferred by user): the same compact treatment for the
+Android app branch.
+
+---
+
+## Session 2026-08-01 (cont.) — Visualized view: mask-shape heatmaps
+
+User request: third view ("Visualized") beside Overlay/Split — heatmaps
+of temperature, humidity, and pressure over the REAL mask shape with
+REAL sensor positions. PPG visualization explicitly deferred.
+
+Geometry provenance (all verified, scripts in session scratchpad):
+- Outline + footprint centers parsed from
+  Moamoa_CPAP_PI_hardware/kmm-pmask-mask/kmm-pmask-mask.kicad_pcb
+  (outer Edge.Cuts loop: 355 chained segments, downsampled ~120 pts;
+  flex connector tail trimmed — no sensors there; neck shoulders kept
+  so U1 stays inside). KiCad and SVG are both y-down: coords map 1:1.
+- refdes -> mux channel read from PCB pad nets (/I2Cn_SDA|SCL):
+  ch0 = U5 baro + U11 SHT + U4 TMP (+U9 PPG),  ch1 = U1 baro (+U2 PPG),
+  ch2 = U7 + U12 + U14 (+U10),  ch3 = U6 + U3 + U13 (+U8).
+  Matches board dts exactly (ch1 cluster has no SHT/TMP).
+- Channel -> displayed key via dts stream order + this branch's
+  SITE_MAP: p1=U1, p2=U5, p3=U7, p4=U6; sht1..3 = U11,U12,U3;
+  tmp1..3 = U4,U14,U13. All recorded in src/maskGeometry.js (with PPG
+  positions saved for later).
+
+Implementation:
+- src/maskGeometry.js — outline poly, viewBox, per-key sensor coords,
+  precomputed heatmap cell grid (2.5 mm cells; a cell is kept if center
+  OR any corner is inside, then the SVG clip trims overflow so the
+  field meets the outline cleanly).
+- src/MaskHeatmap.jsx — IDW (power 2) field over live sensors, 3-stop
+  sequential dark->neon ramp (monotonic lightness), sensor dots with
+  direct value labels ("off" + hollow dot when masked out), min/max
+  colorbar. React.memo with 0.02 tolerance = natural throttle against
+  the 25 Hz pressure stream. Domain padded so noise on a uniform field
+  doesn't paint full-scale.
+- Dashboard: splitView bool -> viewMode 'overlay'|'split'|'viz';
+  third segment button "Visualized". Pressure map honors ABS/delta+Tare
+  and uses SITE_COLORS dots; temp = TMP117 (skin), humidity = SHT40 RH.
+  Ramps: temp pink, RH cyan, pressure amber (all sequential).
+- Verified in Chrome demo mode: three mask-shaped maps on one screen,
+  gradients track the per-sensor values.
+
+---
+
+## Session 2026-08-01 (cont.) — protocol v2.1: 'T' wall-clock sync complete
+
+User supplied the v2.1 protocol integration spec (adds RX command
+'T' 0x54 + u64 LE epoch-ms, 9 B total). Cross-checked against
+Moamoa_CPAP_PI_firmware @ 14f741f: confirmed TSYNC record type 0x13
+(16 B) is SD-LOG ONLY — never sent over BLE, portal parses nothing new.
+Firmware maps monotonic uptime -> wall clock retroactively for the whole
+boot; the offline doctor-facing SD reader (firmware repo 3af8d89)
+drift-corrects between TSYNC records.
+
+State on `rev2-enhancement-xinye`:
+- On-connect 'B' then 'T' write: ALREADY PRESENT (user's commit 5ce1366)
+  — the spec's own caution; verified before touching anything.
+- ADDED this session: periodic re-sync every 10 min while connected
+  (TSYNC_INTERVAL_MS). NUS RX characteristic kept in `rxCharRef`;
+  `sendTimeSync()` helper; interval started after the on-connect sync,
+  cleared on gattserverdisconnected (and 'T' failures are swallowed —
+  next interval retries). RTT path unchanged (bridge is read-only).
+- For the future multi-board port (main branch): the spec requires ONE
+  sync per board connection + its own 10-min timer per store — put both
+  in the per-board store, not module-level.
+
+---
+
+## Session 2026-08-01 (later still) — split-view site columns + sweet-neon theme
+
+On `rev2-enhancement-xinye`, after the compact layout:
+
+1. Split view reorganized (552fbd3): channel-major render order + each
+   mini chart pinned to a fixed site lane (explicit grid-column), so
+   column N = Pressure N / Red N / IR N / Green N top-to-bottom, and an
+   offline site leaves an empty lane instead of shifting the grid.
+2. Sweet-neon theme (user request, replacing the slate/purple look):
+   - KEY DESIGN CHANGE: series color now follows the SITE, not the
+     channel. One fixed categorical palette everywhere:
+     S1 #2ee880 green / S2 #ff4db8 pink / S3 #f0b000 amber / S4 #00c4ea
+     cyan. Chart title/icon carries the channel. Split-view columns
+     inherit their site's color.
+   - Palette validated with the dataviz skill checker against surface
+     #0f111b: worst adjacent pair dE 16.0 (deutan), 28.2 (normal), all
+     >= 3:1 contrast, chroma pass. Lightness 0.70-0.82 sits ABOVE the
+     dark-mode band (0.48-0.67) DELIBERATELY — neon aesthetic on thin
+     line marks; legends/tooltips/columns are the secondary encoding.
+     (Same-hue 4-step ramps — the old approach — cannot pass the
+     separation floors on a dark surface; validator proved it.)
+   - CSS: bg #05050a with twin magenta/cyan radial glows, cyan-tinted
+     card borders, neon accent vars, cyan->pink title gradient, tinted
+     chart grid + tooltip bg.
+   - NOTE: user committed 5ce1366 mid-session (wall-clock 'T' sync in
+     useComm.js + .gitignore android/) — theme work rebased cleanly on
+     top; one grid-stroke edit had been clobbered by the file shuffle
+     and was reapplied.
+   - Verified in Chrome demo mode, Overlay + Split, one screen each.
+
+---
+
 ## Session 2026-08-01 — review of collaborator branch `rev2-enhancement`
 
 Reviewed (not merged) two branches pushed by ysw0624z:
