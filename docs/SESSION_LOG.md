@@ -45,6 +45,47 @@ Android app branch.
 
 ---
 
+## Session 2026-08-01 (cont.) — Visualized view: mask-shape heatmaps
+
+User request: third view ("Visualized") beside Overlay/Split — heatmaps
+of temperature, humidity, and pressure over the REAL mask shape with
+REAL sensor positions. PPG visualization explicitly deferred.
+
+Geometry provenance (all verified, scripts in session scratchpad):
+- Outline + footprint centers parsed from
+  Moamoa_CPAP_PI_hardware/kmm-pmask-mask/kmm-pmask-mask.kicad_pcb
+  (outer Edge.Cuts loop: 355 chained segments, downsampled ~120 pts;
+  flex connector tail trimmed — no sensors there; neck shoulders kept
+  so U1 stays inside). KiCad and SVG are both y-down: coords map 1:1.
+- refdes -> mux channel read from PCB pad nets (/I2Cn_SDA|SCL):
+  ch0 = U5 baro + U11 SHT + U4 TMP (+U9 PPG),  ch1 = U1 baro (+U2 PPG),
+  ch2 = U7 + U12 + U14 (+U10),  ch3 = U6 + U3 + U13 (+U8).
+  Matches board dts exactly (ch1 cluster has no SHT/TMP).
+- Channel -> displayed key via dts stream order + this branch's
+  SITE_MAP: p1=U1, p2=U5, p3=U7, p4=U6; sht1..3 = U11,U12,U3;
+  tmp1..3 = U4,U14,U13. All recorded in src/maskGeometry.js (with PPG
+  positions saved for later).
+
+Implementation:
+- src/maskGeometry.js — outline poly, viewBox, per-key sensor coords,
+  precomputed heatmap cell grid (2.5 mm cells; a cell is kept if center
+  OR any corner is inside, then the SVG clip trims overflow so the
+  field meets the outline cleanly).
+- src/MaskHeatmap.jsx — IDW (power 2) field over live sensors, 3-stop
+  sequential dark->neon ramp (monotonic lightness), sensor dots with
+  direct value labels ("off" + hollow dot when masked out), min/max
+  colorbar. React.memo with 0.02 tolerance = natural throttle against
+  the 25 Hz pressure stream. Domain padded so noise on a uniform field
+  doesn't paint full-scale.
+- Dashboard: splitView bool -> viewMode 'overlay'|'split'|'viz';
+  third segment button "Visualized". Pressure map honors ABS/delta+Tare
+  and uses SITE_COLORS dots; temp = TMP117 (skin), humidity = SHT40 RH.
+  Ramps: temp pink, RH cyan, pressure amber (all sequential).
+- Verified in Chrome demo mode: three mask-shaped maps on one screen,
+  gradients track the per-sensor values.
+
+---
+
 ## Session 2026-08-01 (cont.) — protocol v2.1: 'T' wall-clock sync complete
 
 User supplied the v2.1 protocol integration spec (adds RX command

@@ -9,8 +9,10 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
-import { Activity, Thermometer, Droplets, BatteryMedium, Play, Square, Pause, Bluetooth, Cable, Gauge, LayoutGrid, Layers, FlaskConical, Flag } from 'lucide-react';
+import { Activity, Thermometer, Droplets, BatteryMedium, Play, Square, Pause, Bluetooth, Cable, Gauge, LayoutGrid, Layers, FlaskConical, Flag, Map } from 'lucide-react';
 import { useComm, CH_OF } from './useComm';
+import MaskHeatmap from './MaskHeatmap';
+import { BARO_POS, SHT_POS, TMP_POS } from './maskGeometry';
 
 // Sweet-neon theme: color follows the SITE, not the channel. Each site
 // keeps ONE fixed neon color in every chart (and its split-view column),
@@ -132,7 +134,7 @@ const Dashboard = () => {
     setCommMode
   } = useComm();
 
-  const [splitView, setSplitView] = useState(false);
+  const [viewMode, setViewMode] = useState('overlay'); // 'overlay' | 'split' | 'viz'
   const [windowSec, setWindowSec] = useState('full'); // 'full' | 5
   const [ppgAc, setPpgAc] = useState(false);          // AC (baseline-removed) PPG
   // Contact pressure is absolute (~730 mmHg here); Δ mode subtracts a tare so
@@ -426,15 +428,19 @@ const Dashboard = () => {
             </button>
           </div>
 
-          {/* Overlay / Split view — stacked, pick one (always available) */}
+          {/* Overlay / Split / Visualized — stacked, pick one (always available) */}
           <div className="segmented vertical">
-            <button className={`segment ${!splitView ? 'active' : ''}`} onClick={() => setSplitView(false)}>
+            <button className={`segment ${viewMode === 'overlay' ? 'active' : ''}`} onClick={() => setViewMode('overlay')}>
               <Layers size={16} style={{ marginRight: '0.5rem' }} />
               Overlay
             </button>
-            <button className={`segment ${splitView ? 'active' : ''}`} onClick={() => setSplitView(true)}>
+            <button className={`segment ${viewMode === 'split' ? 'active' : ''}`} onClick={() => setViewMode('split')}>
               <LayoutGrid size={16} style={{ marginRight: '0.5rem' }} />
               Split
+            </button>
+            <button className={`segment ${viewMode === 'viz' ? 'active' : ''}`} onClick={() => setViewMode('viz')}>
+              <Map size={16} style={{ marginRight: '0.5rem' }} />
+              Visualized
             </button>
           </div>
 
@@ -504,7 +510,34 @@ const Dashboard = () => {
       {/* Telemetry + chart controls, one slim row */}
       {stripRow}
 
-      {splitView ? (
+      {viewMode === 'viz' ? (
+        <>
+          {/* Visualized: IDW heatmaps over the real mask flex outline with
+              the real sensor footprint positions (see maskGeometry.js for
+              provenance). Skin temp, humidity, pressure; PPG viz later. */}
+          <MaskHeatmap title="Skin Temperature" unit="°C"
+            stops={['#1c0a16', '#8a1f63', '#ff4db8']} fmt={(v) => (+v).toFixed(1)}
+            sensors={[1, 2, 3].map(i => ({
+              ...TMP_POS[i], label: `T${i}`,
+              value: latestData[`tmp${i}`],
+              live: (latestData.tmpMask & (1 << (i - 1))) !== 0,
+            }))} />
+          <MaskHeatmap title="Humidity" unit="%RH"
+            stops={['#06131c', '#00647e', '#00e5ff']} fmt={(v) => (+v).toFixed(1)}
+            sensors={[1, 2, 3].map(i => ({
+              ...SHT_POS[i], label: `H${i}`,
+              value: latestData[`sht${i}h`],
+              live: (latestData.shtMask & (1 << (i - 1))) !== 0,
+            }))} />
+          <MaskHeatmap title="Contact Pressure" unit={baroUnit}
+            stops={['#1a1204', '#8a6200', '#ffc300']} fmt={(v) => (+v).toFixed(2)}
+            sensors={[1, 2, 3, 4].map(i => ({
+              ...BARO_POS[i], label: `P${i}`, color: SITE_COLORS[i - 1],
+              value: baroLatest(i),
+              live: liveBaro.includes(i - 1),
+            }))} />
+        </>
+      ) : viewMode === 'split' ? (
         <>
           {/* Split view: one column per SITE — pressure on top, then that
               site's Red/IR/Green stacked beneath it. Channel-major render
