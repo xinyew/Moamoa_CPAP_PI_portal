@@ -184,8 +184,6 @@ const Dashboard = () => {
     filterAlpha,
     setFilterAlpha,
     streamStart,
-    connectError,
-    statusStale,
     commMode,
     setSensing,
     setCommMode
@@ -635,7 +633,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className={`dashboard-container${sensingIdle ? ' sensing-idle' : ''}`}>
+    <div className={`dashboard-container${sensingIdle ? ' sensing-idle' : ''}${viewMode !== 'overlay' ? ' scrolling' : ''}`}>
       {/* Header Section */}
       <header className="glass-card header-card">
         <div style={{ minWidth: 0 }}>
@@ -654,8 +652,6 @@ const Dashboard = () => {
             slot — buttons enable/disable with state instead of appearing
             and disappearing. */}
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          {/* Interface toggle — the native tablet app is BLE-only
-              (RTT needs the localhost J-Link bridge on a PC) */}
           {!isNative && (
             <div className="segmented vertical" style={{ opacity: streaming ? 0.35 : 1 }}>
               <button
@@ -693,8 +689,6 @@ const Dashboard = () => {
             </button>
           </div>
 
-          {/* CONNECT FAILED and NO DATA outrank LIVE: a badge that says LIVE
-              over frozen numbers is the failure mode this replaces. */}
           <div className={`status-badge ${
             connectError ? 'status-offline'
             : statusStale ? 'status-stale'
@@ -795,7 +789,7 @@ const Dashboard = () => {
               pressure 755 mmHg up to the MS5611's measurable ceiling
               (1200 mbar = 900 mmHg). Blue = low, red = high everywhere.
               Δ mode falls back to auto-fit around 0. */}
-          <MaskHeatmap title="Skin Temperature" unit={tmpDelta && tmpBase ? 'Δ °C' : '°C'}
+          <MaskHeatmap title="Temperature" unit={tmpDelta && tmpBase ? 'Δ °C' : '°C'}
             stops={THERMAL_STOPS} domain={tmpDelta && tmpBase ? undefined : [34, 41]}
             fmt={(v) => (+v).toFixed(1)}
             mode={`${tmpDelta}:${streaming}:${ovSig('tmp', 3)}`}
@@ -817,7 +811,7 @@ const Dashboard = () => {
               value: rhVal(i),
               live: (latestData.shtMask & (1 << (i - 1))) !== 0,
             }))} />
-          <MaskHeatmap title="Contact Pressure" unit={baroUnit}
+          <MaskHeatmap title="Pressure" unit={baroUnit}
             stops={THERMAL_STOPS} domain={baroDelta && baroBase ? undefined : [755, 900]}
             fmt={(v) => (+v).toFixed(2)}
             mode={`${baroDelta}:${streaming}:${ovSig('p', 4)}`}

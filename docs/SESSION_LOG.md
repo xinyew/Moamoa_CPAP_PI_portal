@@ -6,6 +6,19 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 (cont.) — phone layout ported; phone APK rebuilt
+
+rev2's phone-landscape media query (plus the colorbar/title round it
+rode in with) ported here the usual way: index.css/MaskHeatmap wholesale,
+Dashboard from rev2 with the android delta re-applied (isNative RTT
+gate, CONNECT FAILED / NO DATA badge, strip-stale). Phone variant
+rebuilt with the same temporary-edit recipe (PI sensor_v2_phone,
+.phone appId, sensorLandscape) -> Downloads/PI_sensor_v2_phone.apk;
+edits reverted after the build. Tablet APK unchanged this round (the
+media query cannot fire at tablet heights, but rebuild on request).
+
+---
+
 ## Session 2026-08-02 (cont.) — APK renames: PI sensor_v2 + phone variant
 
 - Tablet app renamed "PI sensor_v2" (strings.xml app_name/title +
