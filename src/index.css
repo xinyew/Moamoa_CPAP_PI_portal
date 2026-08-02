@@ -168,6 +168,27 @@ body {
   flex: 0 0 auto;
 }
 
+/* Big telemetry readouts (RH / skin temp / battery / SD): doubled type */
+.strip-item.big .strip-value {
+  font-size: 1.7rem;
+  line-height: 1.05;
+}
+.strip-item.big .strip-label {
+  font-size: 0.85rem;
+}
+.strip-col {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+/* Quiet secondary line under a big readout (SHT40 air temp under RH) */
+.strip-sub {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .status-badge {
   display: flex;
   align-items: center;

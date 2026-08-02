@@ -12,7 +12,7 @@ import {
 import { Activity, Thermometer, Droplets, BatteryMedium, Play, Square, Pause, Bluetooth, Cable, Gauge, LayoutGrid, Layers, FlaskConical, Flag, Map, Power } from 'lucide-react';
 import { useComm, CH_OF } from './useComm';
 import MaskHeatmap from './MaskHeatmap';
-import { BARO_POS, SHT_POS, TMP_POS } from './maskGeometry';
+import { BARO_POS, SHT_POS, TMP_POS, MASK_PATH_D, MASK_VIEWBOX } from './maskGeometry';
 
 // Sweet-neon theme: color follows the SITE, not the channel. Each site
 // keeps ONE fixed neon color in every chart (and its split-view column),
@@ -25,6 +25,25 @@ const PPG_RED_COLORS   = SITE_COLORS;
 const PPG_IR_COLORS    = SITE_COLORS;
 const PPG_GREEN_COLORS = SITE_COLORS;
 const BARO_COLORS      = SITE_COLORS;
+
+// SPLIT view colors follow the CHANNEL instead: the columns already encode
+// the site, so within a row every Red chart is red, IR pink, Green green,
+// pressure white — the row reads as one quantity at a glance.
+const CH_COLORS = { p: '#f2f5ff', r: '#ff5252', i: '#ff4db8', g: '#2ee880' };
+
+// Tiny mask-ring locator: shows WHERE on the flex a sensor physically sits
+// (same outline + coordinates as the Visualized view).
+const SitePin = ({ pos }) => {
+  const { x, y, w, h } = MASK_VIEWBOX;
+  return (
+    <svg viewBox={`${x} ${y} ${w} ${h}`} preserveAspectRatio="xMidYMid meet"
+         style={{ height: '1.35em', width: 'auto', flex: '0 0 auto', opacity: 0.9 }}>
+      <path d={MASK_PATH_D} fillRule="evenodd" fill="rgba(255,255,255,0.07)"
+            stroke="rgba(160,220,255,0.55)" strokeWidth="1.4" />
+      <circle cx={pos.x} cy={pos.y} r="6.5" fill="#ffe14d" stroke="#05050a" strokeWidth="2" />
+    </svg>
+  );
+};
 
 const fmt1 = (v) => (v === undefined ? '--' : (+v).toFixed(1));
 const fmt2 = (v) => (v == null ? '--' : (+v).toFixed(2));
@@ -86,11 +105,14 @@ const yieldOf = (rows, key) => {
 // Single-signal card used by split view — fills its grid cell.
 // `lane` (0..3) pins the card to a fixed site column so the same sensor's
 // channels stack vertically even when other sites are offline.
-const MiniChart = ({ title, dataKey, color, data, latest, unit, xAxis, tooltipFmt, dot, lane }) => (
+const MiniChart = ({ title, dataKey, color, data, latest, unit, xAxis, tooltipFmt, dot, lane, indicator }) => (
   <div className="glass-card mini-card chart-card"
        style={lane != null ? { gridColumn: `${lane * 3 + 1} / span 3` } : undefined}>
     <div className="chart-head" style={{ justifyContent: 'space-between' }}>
-      <h2 style={{ fontSize: '0.78rem', color: color, whiteSpace: 'nowrap' }}>{title}</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+        <h2 style={{ fontSize: '0.78rem', color: color, whiteSpace: 'nowrap' }}>{title}</h2>
+        {indicator}
+      </div>
       <span className="num" style={{ fontSize: '0.85rem', fontWeight: 700 }}>
         {latest}{unit && <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}> {unit}</span>}
       </span>
@@ -146,6 +168,16 @@ const Dashboard = () => {
   const tareBaro = () => setBaroBase({
     p1: latestData.p1, p2: latestData.p2, p3: latestData.p3, p4: latestData.p4,
   });
+
+  // Skin temp / humidity get the same ABS/Δ treatment on their heatmaps:
+  // absolute values sit in a narrow band (skin ~33-34 °C), so the CHANGE
+  // since a tare is what makes a developing pressure point visible.
+  const [tmpDelta, setTmpDelta] = useState(false);
+  const [tmpBase, setTmpBase] = useState(null);       // {1..3} at tare time
+  const [rhDelta, setRhDelta] = useState(false);
+  const [rhBase, setRhBase] = useState(null);         // {1..3} at tare time
+  const tareTmp = () => setTmpBase({ 1: latestData.tmp1, 2: latestData.tmp2, 3: latestData.tmp3 });
+  const tareRh = () => setRhBase({ 1: latestData.sht1h, 2: latestData.sht2h, 3: latestData.sht3h });
 
   // Keyboard shortcut: press M to drop an event marker (ignored in inputs)
   useEffect(() => {
@@ -293,32 +325,59 @@ const Dashboard = () => {
     </>
   );
 
+  // Corner controls for the Visualized maps — same ABS/Δ + Tare pattern as
+  // pressure, one independent instance per quantity.
+  const vizCorner = (isDelta, setDelta, base, doTare, what) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+      <div className="segmented">
+        <button className={`segment ${!isDelta ? 'active' : ''}`} onClick={() => setDelta(false)}
+                title="Absolute values">ABS</button>
+        <button className={`segment ${isDelta ? 'active' : ''}`}
+                onClick={() => { if (!base) doTare(); setDelta(true); }}
+                title={`Change since the tare baseline — small ${what} shifts stand out`}>Δ</button>
+      </div>
+      <button className="mark" disabled={!streaming} onClick={doTare}
+              title="Set the current readings as the new baseline">Tare</button>
+    </div>
+  );
+  const tmpVal = (i) => {
+    const v = latestData[`tmp${i}`];
+    return (tmpDelta && tmpBase && v != null) ? +(v - (tmpBase[i] ?? 0)).toFixed(2) : v;
+  };
+  const rhVal = (i) => {
+    const v = latestData[`sht${i}h`];
+    return (rhDelta && rhBase && v != null) ? +(v - (rhBase[i] ?? 0)).toFixed(2) : v;
+  };
+
   // Everything between the header and the charts rides in ONE slim strip:
   // env/status telemetry plus the chart controls (PPG window, RAW/AC,
   // pressure ABS/Δ + Tare) and the sensor-fault note.
   const stripRow = (
     <div className="glass-card strip-card">
-      <div className="strip-item" title="SHT40 relative humidity, sensors 1/2/3">
-        <Droplets color="var(--accent-blue)" size={14} />
-        <span className="strip-label">RH%</span>
-        <span className="strip-value">{fmt1(latestData.sht1h)}/{fmt1(latestData.sht2h)}/{fmt1(latestData.sht3h)}</span>
+      {/* Telemetry readouts: doubled type so they read from across the room.
+          The SHT40's own air temp rides quietly under RH — same chip, and it
+          is context rather than a primary reading. */}
+      <div className="strip-item big" title="SHT40 relative humidity, sensors 1/2/3 (small line: SHT40 air temperature)">
+        <Droplets color="var(--accent-blue)" size={20} />
+        <div className="strip-col">
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
+            <span className="strip-label">RH%</span>
+            <span className="strip-value">{fmt1(latestData.sht1h)}/{fmt1(latestData.sht2h)}/{fmt1(latestData.sht3h)}</span>
+          </div>
+          <span className="strip-sub">Air {fmt1(latestData.sht1t)}/{fmt1(latestData.sht2t)}/{fmt1(latestData.sht3t)} °C</span>
+        </div>
       </div>
-      <div className="strip-item" title="SHT40 air temperature, sensors 1/2/3">
-        <Thermometer color="var(--accent-blue)" size={14} />
-        <span className="strip-label">Air°C</span>
-        <span className="strip-value">{fmt1(latestData.sht1t)}/{fmt1(latestData.sht2t)}/{fmt1(latestData.sht3t)}</span>
-      </div>
-      <div className="strip-item" title="TMP117 skin temperature, sensors 1/2/3">
-        <Thermometer color="var(--accent-amber)" size={14} />
+      <div className="strip-item big" title="TMP117 skin temperature, sensors 1/2/3">
+        <Thermometer color="var(--accent-amber)" size={20} />
         <span className="strip-label">Skin°C</span>
         <span className="strip-value">{fmt1(latestData.tmp1)}/{fmt1(latestData.tmp2)}/{fmt1(latestData.tmp3)}</span>
       </div>
-      <div className="strip-item" title="Battery voltage">
-        <BatteryMedium color="var(--accent-green)" size={14} />
+      <div className="strip-item big" title="Battery voltage">
+        <BatteryMedium color="var(--accent-green)" size={20} />
         <span className="strip-value">{((latestData.vbat || 0) / 1000).toFixed(2)}<span className="strip-label">V</span></span>
       </div>
-      <div className="strip-item" title="microSD card on the board (onboard logging)">
-        <Gauge color="var(--accent-yellow)" size={14} />
+      <div className="strip-item big" title="microSD card on the board (onboard logging)">
+        <Gauge color="var(--accent-yellow)" size={20} />
         <span className="strip-label">SD</span>
         <span className="strip-value">{latestData.sdOk ? 'OK' : '--'}</span>
       </div>
@@ -545,22 +604,28 @@ const Dashboard = () => {
           {/* Visualized: IDW heatmaps over the real mask flex outline with
               the real sensor footprint positions (see maskGeometry.js for
               provenance). Skin temp, humidity, pressure; PPG viz later. */}
-          <MaskHeatmap title="Skin Temperature" unit="°C"
+          <MaskHeatmap title="Skin Temperature" unit={tmpDelta && tmpBase ? 'Δ °C' : '°C'}
             stops={['#1c0a16', '#8a1f63', '#ff4db8']} fmt={(v) => (+v).toFixed(1)}
+            mode={`${tmpDelta}:${streaming}`}
+            controls={vizCorner(tmpDelta, setTmpDelta, tmpBase, tareTmp, 'skin-temp')}
             sensors={[1, 2, 3].map(i => ({
               ...TMP_POS[i], label: `T${i}`,
-              value: latestData[`tmp${i}`],
+              value: tmpVal(i),
               live: (latestData.tmpMask & (1 << (i - 1))) !== 0,
             }))} />
-          <MaskHeatmap title="Humidity" unit="%RH"
+          <MaskHeatmap title="Humidity" unit={rhDelta && rhBase ? 'Δ %RH' : '%RH'}
             stops={['#06131c', '#00647e', '#00e5ff']} fmt={(v) => (+v).toFixed(1)}
+            mode={`${rhDelta}:${streaming}`}
+            controls={vizCorner(rhDelta, setRhDelta, rhBase, tareRh, 'humidity')}
             sensors={[1, 2, 3].map(i => ({
               ...SHT_POS[i], label: `H${i}`,
-              value: latestData[`sht${i}h`],
+              value: rhVal(i),
               live: (latestData.shtMask & (1 << (i - 1))) !== 0,
             }))} />
           <MaskHeatmap title="Contact Pressure" unit={baroUnit}
             stops={['#1a1204', '#8a6200', '#ffc300']} fmt={(v) => (+v).toFixed(2)}
+            mode={`${baroDelta}:${streaming}`}
+            controls={<div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>{baroControlGroup}</div>}
             sensors={[1, 2, 3, 4].map(i => ({
               ...BARO_POS[i], label: `P${i}`, color: SITE_COLORS[i - 1],
               value: baroLatest(i),
@@ -573,20 +638,25 @@ const Dashboard = () => {
               site's Red/IR/Green stacked beneath it. Channel-major render
               order + fixed lanes keep columns aligned even when a site is
               offline (its lane simply stays empty). */}
+          {/* Rows are colored by CHANNEL (pressure white, Red red, IR pink,
+              Green green) — the columns already encode the site, and each
+              pressure card carries a mask-ring pin showing where that baro
+              physically sits. */}
           {liveBaro.map(b => (
             <MiniChart key={`p${b + 1}`} lane={b} title={`Pressure ${b + 1}`} dataKey={baroKey(`p${b + 1}`)}
-                       color={BARO_COLORS[b]} data={baroData} xAxis={timeAxisProps} tooltipFmt={fmtElapsed}
+                       color={CH_COLORS.p} data={baroData} xAxis={timeAxisProps} tooltipFmt={fmtElapsed}
+                       indicator={<SitePin pos={BARO_POS[b + 1]} />}
                        latest={fmt1(baroLatest(b + 1) ?? undefined)} unit={baroUnit} />
           ))}
           {[
-            ['Red', 'r', PPG_RED_COLORS],
-            ['IR', 'i', PPG_IR_COLORS],
-            ['Green', 'g', PPG_GREEN_COLORS],
-          ].map(([label, ch, colors]) =>
+            ['Red', 'r'],
+            ['IR', 'i'],
+            ['Green', 'g'],
+          ].map(([label, ch]) =>
             livePpg.map(s => (
               <MiniChart key={`${ch}${s + 1}`} lane={s}
                          title={`PPG ${s + 1} ${label}${ppgAc ? ' (AC)' : ''}`} dataKey={ppgKey(`${ch}${s + 1}`)}
-                         color={colors[s]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
+                         color={CH_COLORS[ch]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
                          dot={makeDot(true, (ppgYield[s + 1] ?? 1) < SPARSE_YIELD)}
                          latest={fmtCount(latestData[ppgKey(`${ch}${s + 1}`)])} unit="counts" />
             ))

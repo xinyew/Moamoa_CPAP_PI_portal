@@ -1,5 +1,5 @@
 import React from 'react';
-import { MASK_PATH_D, MASK_VIEWBOX, MASK_CELLS, GRID_STEP } from './maskGeometry';
+import { MASK_PATH_D, MASK_VIEWBOX, MASK_CELLS, GRID_STEP, REGIONS, REGION_DIVIDERS } from './maskGeometry';
 
 /*
  * One heatmap of the mask flex board: inverse-distance-weighted field
@@ -39,7 +39,7 @@ const idw = (cx, cy, pts) => {
   return num / den;
 };
 
-const MaskHeatmap = ({ title, unit, sensors, stops, fmt }) => {
+const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode }) => {
   const ramp = makeRamp(stops);
   const live = sensors.filter(s => s.live && s.value != null && !isNaN(s.value));
 
@@ -62,9 +62,14 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt }) => {
         <h2 style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
           {title} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>({unit})</span>
         </h2>
-        {live.length === 0 && (
-          <span style={{ fontSize: '0.72rem', color: 'var(--accent-amber)' }}>no live sensors</span>
-        )}
+        {/* top-right corner: per-map controls (ABS/Δ + Tare), plus the
+            no-sensor warning when the map has nothing live to draw */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {live.length === 0 && (
+            <span style={{ fontSize: '0.72rem', color: 'var(--accent-amber)' }}>no live sensors</span>
+          )}
+          {controls}
+        </div>
       </div>
       <div className="chart-body" style={{ display: 'flex', flexDirection: 'column' }}>
         <svg viewBox={`${x} ${y} ${w} ${h}`} style={{ flex: 1, minHeight: 0, width: '100%' }}
@@ -84,6 +89,23 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt }) => {
                 ))
               : <rect x={x} y={y} width={w} height={h} fill="rgba(255,255,255,0.03)" />}
           </g>
+          {/* anatomical zones A-D: dashed dividers (clipped to the ring, so
+              the parts crossing the cutout vanish) + a letter per zone */}
+          <g clipPath={`url(#${clipId})`}>
+            {REGION_DIVIDERS.map(([[x1, y1], [x2, y2]], i) => (
+              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke="rgba(255,255,255,0.4)" strokeWidth="0.6"
+                    strokeDasharray="2 1.4" />
+            ))}
+          </g>
+          {REGIONS.map(r => (
+            <text key={r.id} x={r.label.x} y={r.label.y} textAnchor="middle"
+                  fontSize="5.2" fontWeight="800" fill="rgba(255,255,255,0.9)"
+                  stroke="#05050a" strokeWidth="0.9" paintOrder="stroke">
+              <title>{r.name}</title>
+              {r.id}
+            </text>
+          ))}
           {/* one path strokes both the outer profile and the hole edge */}
           <path d={MASK_PATH_D} fill="none"
                 stroke="rgba(160,220,255,0.45)" strokeWidth="0.7" />
@@ -125,6 +147,10 @@ const close = (a, b) => (a == null && b == null) ||
 export default React.memo(MaskHeatmap, (prev, next) =>
   prev.title === next.title &&
   prev.unit === next.unit &&
+  // `mode` folds in anything the corner controls render from (ABS/Δ state,
+  // streaming) — the `controls` node itself is a fresh JSX element every
+  // render and must NOT be compared directly.
+  prev.mode === next.mode &&
   prev.sensors.length === next.sensors.length &&
   prev.sensors.every((s, i) =>
     s.live === next.sensors[i].live && close(s.value, next.sensors[i].value)));

@@ -6,6 +6,48 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 — viz zones + per-map Δ, split channel colors, big strip
+
+On `rev2-enhancement` (user's working branch; 5172 dev server, HMR live).
+
+1. Visualized view — per-map ABS/Δ + Tare, top-right of each heatmap:
+   - New `tmpDelta/tmpBase` and `rhDelta/rhBase` states beside the existing
+     baro pair; `vizCorner()` builds the corner control; `MaskHeatmap`
+     gained `controls` + `mode` props (mode folds ABS/Δ + streaming into
+     the React.memo comparator — the controls JSX itself must not be
+     compared, it's a fresh element every render).
+   - Skin temp / humidity deltas are per-sensor against their tare
+     snapshot; unit label flips to 'Δ °C' / 'Δ %RH'. Pressure map reuses
+     the shared baroControlGroup (same state as the charts).
+2. Anatomical zones on the mask maps (user mockup): ring divided into
+   A nasal bridge (strap+tab+apex: x 64-86, y<84), B left / C right
+   (split at x=75), D chin (y>135) — `REGIONS`, `regionOf`,
+   `REGION_DIVIDERS` in maskGeometry.js. Sensor positions untouched;
+   every sensor verified to land in its sensible zone (p1→A; p2,sht1,
+   tmp1→B; p4,sht3,tmp3→C; p3,sht2,tmp2→D). Drawn as dashed dividers
+   clipped to the ring + bold letters with the zone name in a hover
+   <title>. Letters render as "Nasal bridgeA" in textContent — that's
+   the <title> child, not a bug.
+3. Split view recolored by CHANNEL (user: site colors weren't intuitive):
+   pressure white #f2f5ff, Red #ff5252, IR pink #ff4db8, Green #2ee880
+   (`CH_COLORS`); columns still encode the site. Each Pressure card
+   header now carries a `SitePin` — a tiny mask-ring SVG with a dot at
+   that baro's real position (reuses MASK_PATH_D/BARO_POS).
+   Overlay/Visualized keep the neon site colors.
+4. Strip: SHT40 air temp is now a small gray line under RH% (same chip,
+   context not primary); RH / Skin°C / battery / SD get doubled type
+   (`.strip-item.big`, 0.85rem→1.7rem values). Strip is shared, so this
+   applies in all three views.
+
+Verified on :5172 with demo mode, DOM-checked: 3 maps each with ABS/Δ/
+Tare + 4 dividers + A-D letters w/ name tooltips; Δ on skin temp flips
+unit and shows T1-3 = 0.0 vs tare while humidity stays ABS (independent);
+split rows uniform per channel and 4 white pressure cards each with a
+pin; strip values 27.2px (doubled), Air sub-line present, no horizontal
+overflow. `vite build` clean.
+
+---
+
 ## Session 2026-08-01 (later still) — 'P' sensing toggle implemented on `rev2-enhancement`
 
 Branch note: working on `rev2-enhancement` at the user's request. It was

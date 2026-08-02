@@ -114,6 +114,36 @@ export const PPG_POS = {    // MAX30101, for the future PPG visualization
   4: { x: 95, y: 86 },      // U8  (mux ch3)
 };
 
+// ---- anatomical regions (A-D) ----
+// The ring is divided into four named zones matching where the mask
+// contacts the face: the top tab/apex (nasal bridge), the two descending
+// arms (left / right), and the bottom arc (chin). Sensor positions are
+// untouched — this is an overlay. Thresholds chosen so every current
+// sensor lands in its anatomically sensible zone:
+//   A: p1 (75,67)          B: p2, sht1, tmp1      C: p4, sht3, tmp3
+//   D: p3, sht2, tmp2
+export const REGIONS = [
+  { id: 'A', name: 'Nasal bridge', label: { x: 75, y: 58 } },
+  { id: 'B', name: 'Left',         label: { x: 35.5, y: 119 } },
+  { id: 'C', name: 'Right',        label: { x: 114.5, y: 119 } },
+  { id: 'D', name: 'Chin',         label: { x: 83, y: 145.5 } },
+];
+
+export const regionOf = (x, y) => {
+  if (y < 84 && x >= 64 && x <= 86) return 'A'; // strap + tab + apex
+  if (y > 135) return 'D';                      // bottom arc
+  return x < 75 ? 'B' : 'C';                    // the two arms
+};
+
+// Boundary segments between regions; drawn clipped to the ring, so the
+// parts crossing the central cutout simply vanish.
+export const REGION_DIVIDERS = [
+  [[64, 38.5], [64, 84]],     // A | B
+  [[86, 38.5], [86, 84]],     // A | C
+  [[64, 84], [86, 84]],       // A underside (mostly inside the cutout)
+  [[28.5, 135], [121.5, 135]], // B|D and C|D across both arms
+];
+
 // ---- heatmap grid: cell centers on the ring, precomputed once ----
 
 const pointInPoly = (x, y, poly) => {
