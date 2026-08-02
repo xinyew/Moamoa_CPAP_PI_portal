@@ -39,14 +39,19 @@ const idw = (cx, cy, pts) => {
   return num / den;
 };
 
-const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode }) => {
+const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain }) => {
   const ramp = makeRamp(stops);
   const live = sensors.filter(s => s.live && s.value != null && !isNaN(s.value));
 
-  // Domain from the live values, padded so sensor noise doesn't paint a
-  // full-scale rainbow when the field is nearly uniform.
+  // FIXED physical domain when given (e.g. skin 34-41 °C): color then means
+  // the same thing on every glance and across sessions; out-of-range values
+  // clamp to the ends. Without one (Δ mode), fall back to fitting the live
+  // values, padded so sensor noise doesn't paint a full-scale rainbow when
+  // the field is nearly uniform.
   let lo = 0, hi = 1;
-  if (live.length) {
+  if (domain) {
+    [lo, hi] = domain;
+  } else if (live.length) {
     lo = Math.min(...live.map(s => s.value));
     hi = Math.max(...live.map(s => s.value));
     const pad = Math.max((hi - lo) * 0.15, 0.25);
@@ -98,12 +103,12 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode }) => {
                     strokeDasharray="2 1.4" />
             ))}
           </g>
+          {/* zone names spelled out (user request — not just letters) */}
           {REGIONS.map(r => (
             <text key={r.id} x={r.label.x} y={r.label.y} textAnchor="middle"
-                  fontSize="5.2" fontWeight="800" fill="rgba(255,255,255,0.9)"
-                  stroke="#05050a" strokeWidth="0.9" paintOrder="stroke">
-              <title>{r.name}</title>
-              {r.id}
+                  fontSize="3.6" fontWeight="800" fill="rgba(255,255,255,0.92)"
+                  stroke="#05050a" strokeWidth="0.8" paintOrder="stroke">
+              {r.name}
             </text>
           ))}
           {/* one path strokes both the outer profile and the hole edge */}
@@ -125,14 +130,14 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode }) => {
         </svg>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
           <span className="num" style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
-            {live.length ? fmt(lo) : '--'}
+            {(domain || live.length) ? fmt(lo) : '--'}
           </span>
           <div style={{
             flex: 1, height: 6, borderRadius: 3,
             background: `linear-gradient(to right, ${stops[0]}, ${stops[1]}, ${stops[2]})`
           }} />
           <span className="num" style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
-            {live.length ? fmt(hi) : '--'}
+            {(domain || live.length) ? fmt(hi) : '--'}
           </span>
         </div>
       </div>

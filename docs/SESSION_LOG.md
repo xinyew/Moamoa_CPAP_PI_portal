@@ -6,6 +6,25 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 (cont. 3) — fixed physical heat scales + named zones
+
+- All three Visualized maps now share ONE thermal ramp (blue -> yellow ->
+  red, THERMAL_STOPS) with FIXED physical domains per user spec: skin
+  34-41 °C, RH 30-100 %, pressure 755-900 mmHg (900 = the MS5611's
+  1200 mbar measurable ceiling). Color now means the same value on every
+  glance and across sessions; out-of-range clamps to the ends. Δ mode
+  falls back to auto-fit (a fixed absolute scale is meaningless for
+  deltas). MaskHeatmap gained a `domain` prop; the colorbar min/max show
+  the domain even before sensors go live.
+- Zone labels spell the names out (Nasal bridge / Left / Right / Chin,
+  3.6 px) instead of bare letters.
+- Split-view SitePin dots now take the PLOT's line color (pressure white,
+  Red red, IR pink, Green green) instead of uniform yellow.
+Verified in demo: colorbars read 34.0-41.0 / 30.0-100.0 / 755.00-900.00,
+4 zone names per map, pin colors per channel row. Build clean.
+
+---
+
 ## Session 2026-08-02 (cont. 2) — sensor matching, radial zones, legends
 
 Rapid-fire user feedback round on `rev2-enhancement` (5172, HMR):

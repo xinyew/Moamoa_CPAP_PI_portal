@@ -31,16 +31,22 @@ const BARO_COLORS      = SITE_COLORS;
 // pressure white — the row reads as one quantity at a glance.
 const CH_COLORS = { p: '#f2f5ff', r: '#ff5252', i: '#ff4db8', g: '#2ee880' };
 
+// One thermal ramp for every heatmap: coldest = blue, hottest = red, with
+// a fixed PHYSICAL domain per quantity so color always means the same
+// value (skin 34-41 °C, RH 30-100 %, pressure 755-900 mmHg).
+const THERMAL_STOPS = ['#2563eb', '#facc15', '#ef4444'];
+
 // Tiny mask-ring locator: shows WHERE on the flex a sensor physically sits
-// (same outline + coordinates as the Visualized view).
-const SitePin = ({ pos }) => {
+// (same outline + coordinates as the Visualized view). The dot takes the
+// plot's own line color so the pin reads as "this trace, right here".
+const SitePin = ({ pos, color = '#ffe14d' }) => {
   const { x, y, w, h } = MASK_VIEWBOX;
   return (
     <svg viewBox={`${x} ${y} ${w} ${h}`} preserveAspectRatio="xMidYMid meet"
          style={{ height: '4em', width: 'auto', flex: '0 0 auto', opacity: 0.95 }}>
       <path d={MASK_PATH_D} fillRule="evenodd" fill="rgba(255,255,255,0.07)"
             stroke="rgba(160,220,255,0.6)" strokeWidth="1.2" />
-      <circle cx={pos.x} cy={pos.y} r="6" fill="#ffe14d" stroke="#05050a" strokeWidth="1.6" />
+      <circle cx={pos.x} cy={pos.y} r="6" fill={color} stroke="#05050a" strokeWidth="1.6" />
     </svg>
   );
 };
@@ -707,8 +713,13 @@ const Dashboard = () => {
           {/* Visualized: IDW heatmaps over the real mask flex outline with
               the real sensor footprint positions (see maskGeometry.js for
               provenance). Skin temp, humidity, pressure; PPG viz later. */}
+          {/* Fixed physical scales (user spec): skin 34-41 °C, RH 30-100 %,
+              pressure 755 mmHg up to the MS5611's measurable ceiling
+              (1200 mbar = 900 mmHg). Blue = low, red = high everywhere.
+              Δ mode falls back to auto-fit around 0. */}
           <MaskHeatmap title="Skin Temperature" unit={tmpDelta && tmpBase ? 'Δ °C' : '°C'}
-            stops={['#1c0a16', '#8a1f63', '#ff4db8']} fmt={(v) => (+v).toFixed(1)}
+            stops={THERMAL_STOPS} domain={tmpDelta && tmpBase ? undefined : [34, 41]}
+            fmt={(v) => (+v).toFixed(1)}
             mode={`${tmpDelta}:${streaming}`}
             controls={vizCorner(tmpDelta, setTmpDelta, tareTmp, 'skin-temp')}
             sensors={[1, 2, 3].map(i => ({
@@ -717,7 +728,8 @@ const Dashboard = () => {
               live: (latestData.tmpMask & (1 << (i - 1))) !== 0,
             }))} />
           <MaskHeatmap title="Humidity" unit={rhDelta && rhBase ? 'Δ %RH' : '%RH'}
-            stops={['#06131c', '#00647e', '#00e5ff']} fmt={(v) => (+v).toFixed(1)}
+            stops={THERMAL_STOPS} domain={rhDelta && rhBase ? undefined : [30, 100]}
+            fmt={(v) => (+v).toFixed(1)}
             mode={`${rhDelta}:${streaming}`}
             controls={vizCorner(rhDelta, setRhDelta, tareRh, 'humidity')}
             sensors={[1, 2, 3].map(i => ({
@@ -726,7 +738,8 @@ const Dashboard = () => {
               live: (latestData.shtMask & (1 << (i - 1))) !== 0,
             }))} />
           <MaskHeatmap title="Contact Pressure" unit={baroUnit}
-            stops={['#1a1204', '#8a6200', '#ffc300']} fmt={(v) => (+v).toFixed(2)}
+            stops={THERMAL_STOPS} domain={baroDelta && baroBase ? undefined : [755, 900]}
+            fmt={(v) => (+v).toFixed(2)}
             mode={`${baroDelta}:${streaming}`}
             controls={<div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>{baroControlGroup}</div>}
             sensors={[1, 2, 3, 4].map(i => ({
@@ -748,7 +761,7 @@ const Dashboard = () => {
           {liveBaro.map(b => (
             <MiniChart key={`p${b + 1}`} lane={b} title={`Pressure ${b + 1}`} dataKey={baroKey(`p${b + 1}`)}
                        color={CH_COLORS.p} data={baroData} xAxis={timeAxisProps} tooltipFmt={fmtElapsed}
-                       indicator={<SitePin pos={BARO_POS[b + 1]} />}
+                       indicator={<SitePin pos={BARO_POS[b + 1]} color={CH_COLORS.p} />}
                        latest={fmt1(baroLatest(b + 1) ?? undefined)} unit={baroUnit} />
           ))}
           {[
@@ -761,7 +774,7 @@ const Dashboard = () => {
                          title={`PPG ${s + 1} ${label}${ppgAc ? ' (AC)' : ''}`} dataKey={ppgKey(`${ch}${s + 1}`)}
                          color={CH_COLORS[ch]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
                          dot={makeDot(true, (ppgYield[s + 1] ?? 1) < SPARSE_YIELD)}
-                         indicator={<SitePin pos={PPG_POS[s + 1]} />}
+                         indicator={<SitePin pos={PPG_POS[s + 1]} color={CH_COLORS[ch]} />}
                          latest={fmtCount(latestData[ppgKey(`${ch}${s + 1}`)])} unit="counts" />
             ))
           )}
