@@ -168,13 +168,15 @@ body {
   flex: 0 0 auto;
 }
 
-/* Big telemetry readouts (RH / skin temp / battery / SD): doubled type */
+/* Big telemetry readouts (RH / skin temp / battery / SD): doubled type,
+   and everything else in the strip scaled to match — one consistent size
+   story instead of big numbers beside tiny controls. */
 .strip-item.big .strip-value {
   font-size: 1.7rem;
   line-height: 1.05;
 }
 .strip-item.big .strip-label {
-  font-size: 0.85rem;
+  font-size: 1.05rem;
 }
 .strip-col {
   display: flex;
@@ -183,10 +185,21 @@ body {
 }
 /* Quiet secondary line under a big readout (SHT40 air temp under RH) */
 .strip-sub {
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+/* Strip-local controls and notes follow the enlarged telemetry */
+.strip-card .toolbar-label {
+  font-size: 1rem;
+}
+.strip-card .segment {
+  font-size: 1rem;
+  padding: 0.32rem 0.75rem;
+}
+.strip-card .offline-note {
+  font-size: 0.95rem;
 }
 
 .status-badge {

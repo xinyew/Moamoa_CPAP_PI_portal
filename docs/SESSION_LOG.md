@@ -6,6 +6,28 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 (cont.) — strip consistency + site pins everywhere
+
+Follow-up user feedback, same branch (5172, HMR live):
+- Strip type unified LARGE: big labels 1.05rem, Air sub-line 0.85rem,
+  strip-local toolbar labels/segments 1rem (`.strip-card` scoped so the
+  compact viz-corner controls stay small). Values remain 1.7rem.
+- Pressure ABS/Δ/Tare REMOVED from the strip — it lives on the pressure
+  heatmap now (state is shared, so overlay/split still honor Δ; the
+  overlay chart header keeps showing the baseline text).
+- In Visualized view the strip also drops Window Full/5s and PPG RAW/AC
+  (no time series there). Fault note stays in all views; the strip's
+  baroBaseText fallback line was removed outright.
+- SitePin enlarged ~3x (1.35em -> 4em, measured 64 px) and added to all
+  PPG minis via PPG_POS (keys are display indices, same as BARO_POS) —
+  every split card now shows where its sensor sits on the ring.
+Verified in demo mode: strip has no ABS/Δ in any view, Window/PPG absent
+only in viz, 4 pressure + 12 PPG pins at 64 px, controls at 16px/16.8px,
+no horizontal overflow. (One earlier 12.16px reading was pre-HMR stale —
+re-measured 16px after the style injection landed.)
+
+---
+
 ## Session 2026-08-02 — viz zones + per-map Δ, split channel colors, big strip
 
 On `rev2-enhancement` (user's working branch; 5172 dev server, HMR live).

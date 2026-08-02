@@ -12,7 +12,7 @@ import {
 import { Activity, Thermometer, Droplets, BatteryMedium, Play, Square, Pause, Bluetooth, Cable, Gauge, LayoutGrid, Layers, FlaskConical, Flag, Map, Power } from 'lucide-react';
 import { useComm, CH_OF } from './useComm';
 import MaskHeatmap from './MaskHeatmap';
-import { BARO_POS, SHT_POS, TMP_POS, MASK_PATH_D, MASK_VIEWBOX } from './maskGeometry';
+import { BARO_POS, SHT_POS, TMP_POS, PPG_POS, MASK_PATH_D, MASK_VIEWBOX } from './maskGeometry';
 
 // Sweet-neon theme: color follows the SITE, not the channel. Each site
 // keeps ONE fixed neon color in every chart (and its split-view column),
@@ -37,10 +37,10 @@ const SitePin = ({ pos }) => {
   const { x, y, w, h } = MASK_VIEWBOX;
   return (
     <svg viewBox={`${x} ${y} ${w} ${h}`} preserveAspectRatio="xMidYMid meet"
-         style={{ height: '1.35em', width: 'auto', flex: '0 0 auto', opacity: 0.9 }}>
+         style={{ height: '4em', width: 'auto', flex: '0 0 auto', opacity: 0.95 }}>
       <path d={MASK_PATH_D} fillRule="evenodd" fill="rgba(255,255,255,0.07)"
-            stroke="rgba(160,220,255,0.55)" strokeWidth="1.4" />
-      <circle cx={pos.x} cy={pos.y} r="6.5" fill="#ffe14d" stroke="#05050a" strokeWidth="2" />
+            stroke="rgba(160,220,255,0.6)" strokeWidth="1.2" />
+      <circle cx={pos.x} cy={pos.y} r="6" fill="#ffe14d" stroke="#05050a" strokeWidth="1.6" />
     </svg>
   );
 };
@@ -382,33 +382,35 @@ const Dashboard = () => {
         <span className="strip-value">{latestData.sdOk ? 'OK' : '--'}</span>
       </div>
 
-      <div className="strip-sep" />
-
-      <div className="strip-item">
-        <span className="toolbar-label">Window</span>
-        <div className="segmented">
-          {WINDOW_OPTIONS.map(opt => (
-            <button key={opt} className={`segment ${windowSec === opt ? 'active' : ''}`}
-                    onClick={() => setWindowSec(opt)}
-                    title={opt === 'full' ? 'Whole buffer (about the last 8 s)' : `Last ${opt} s of real time`}>
-              {opt === 'full' ? 'Full' : `${opt}s`}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="strip-item">
-        <span className="toolbar-label">PPG</span>
-        <div className="segmented">
-          <button className={`segment ${!ppgAc ? 'active' : ''}`} onClick={() => setPpgAc(false)}
-                  title="Raw sensor counts, DC included — use for signal strength and contact">RAW</button>
-          <button className={`segment ${ppgAc ? 'active' : ''}`} onClick={() => setPpgAc(true)}
-                  title="Slow drift removed, pulsatile part only — puts all four sites on a comparable scale">AC</button>
-        </div>
-      </div>
-      <div className="strip-item">
-        <span className="toolbar-label">Pressure</span>
-        {baroControlGroup}
-      </div>
+      {/* Chart controls only where charts exist: the Visualized view has no
+          time series (Window / RAW-AC are meaningless there) and pressure
+          ABS/Δ now lives on the pressure map itself. */}
+      {viewMode !== 'viz' && (
+        <>
+          <div className="strip-sep" />
+          <div className="strip-item">
+            <span className="toolbar-label">Window</span>
+            <div className="segmented">
+              {WINDOW_OPTIONS.map(opt => (
+                <button key={opt} className={`segment ${windowSec === opt ? 'active' : ''}`}
+                        onClick={() => setWindowSec(opt)}
+                        title={opt === 'full' ? 'Whole buffer (about the last 8 s)' : `Last ${opt} s of real time`}>
+                  {opt === 'full' ? 'Full' : `${opt}s`}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="strip-item">
+            <span className="toolbar-label">PPG</span>
+            <div className="segmented">
+              <button className={`segment ${!ppgAc ? 'active' : ''}`} onClick={() => setPpgAc(false)}
+                      title="Raw sensor counts, DC included — use for signal strength and contact">RAW</button>
+              <button className={`segment ${ppgAc ? 'active' : ''}`} onClick={() => setPpgAc(true)}
+                      title="Slow drift removed, pulsatile part only — puts all four sites on a comparable scale">AC</button>
+            </div>
+          </div>
+        </>
+      )}
 
       {(offlinePpg.length > 0 || darkPpg.length > 0 || lossy.length > 0) ? (
         <span className="offline-note" title="OFFLINE = failed the boot probe; the firmware never retries, so it stays out until reboot. ALL-ZERO = the chip answers on I2C and the read succeeds, but red/IR/green are all 0 — LEDs likely never turned on. YIELD = share of samples that carried a value.">
@@ -421,9 +423,7 @@ const Dashboard = () => {
               `YIELD ${lossy.map(site => `PPG${site} ${Math.round(ppgYield[site] * 100)}%`).join(' / ')}`,
           ].filter(Boolean).join('  |  ')}
         </span>
-      ) : (
-        <span className="chart-footnote" style={{ marginLeft: 'auto' }}>{baroBaseText}</span>
-      )}
+      ) : null}
     </div>
   );
 
@@ -658,6 +658,7 @@ const Dashboard = () => {
                          title={`PPG ${s + 1} ${label}${ppgAc ? ' (AC)' : ''}`} dataKey={ppgKey(`${ch}${s + 1}`)}
                          color={CH_COLORS[ch]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
                          dot={makeDot(true, (ppgYield[s + 1] ?? 1) < SPARSE_YIELD)}
+                         indicator={<SitePin pos={PPG_POS[s + 1]} />}
                          latest={fmtCount(latestData[ppgKey(`${ch}${s + 1}`)])} unit="counts" />
             ))
           )}
