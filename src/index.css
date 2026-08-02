@@ -128,9 +128,10 @@ body {
   grid-column: span 3;
 }
 
-/* Visualized view: three mask heatmaps side by side */
+/* Visualized view: four mask heatmaps side by side
+   (skin temp, humidity, pressure, PPG IR SNR) */
 .viz-card {
-  grid-column: span 4;
+  grid-column: span 3;
 }
 
 /* Telemetry + chart controls in ONE slim row */
@@ -166,6 +167,54 @@ body {
   align-self: stretch;
   background: var(--border-glass);
   flex: 0 0 auto;
+}
+
+/* Big telemetry readouts (RH / skin temp / battery / SD): doubled type,
+   and everything else in the strip scaled to match — one consistent size
+   story instead of big numbers beside tiny controls. */
+.strip-item.big .strip-value {
+  font-size: 1.15rem;
+  line-height: 1.05;
+}
+/* Labels match the values — one size story, no small print next to big
+   numbers (the Air sub-line is the deliberate exception). */
+.strip-item.big .strip-label {
+  font-size: 1.15rem;
+  line-height: 1.05;
+}
+/* The RH cell holds two lines; the Air sub-line hangs BELOW the row flow
+   (absolute) so RH's main line sits on the same baseline as its neighbors
+   instead of being pushed up. The strip reserves the bottom padding for it. */
+.strip-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.strip-sub {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.strip-card {
+  padding-bottom: 1rem;
+}
+/* Strip-local controls and notes follow the telemetry scale */
+.strip-card .toolbar-label {
+  font-size: 0.9rem;
+}
+.strip-card .segment {
+  font-size: 0.9rem;
+  padding: 0.28rem 0.65rem;
+}
+.strip-card .offline-note {
+  font-size: 0.85rem;
+  /* battery+SD own the far right of the strip; the note sits inline */
+  margin-left: 0;
 }
 
 .status-badge {
@@ -255,11 +304,6 @@ button.demo.active { background: var(--accent-amber); color: #000; }
   border: 1px solid rgba(192, 92, 255, 0.25);
 }
 
-/* Any live numeric readout: digits update in place */
-.num {
-  font-variant-numeric: tabular-nums;
-}
-
 /* Link alive but silent: STATUS stopped arriving. The strip is greyed so the
    frozen numbers cannot be mistaken for live telemetry. */
 .strip-stale {
@@ -272,6 +316,31 @@ button.demo.active { background: var(--accent-amber); color: #000; }
   border: 1px solid rgba(240, 176, 0, 0.3);
 }
 
+/* Any live numeric readout: digits update in place */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sensing off: the board is deliberately idle and still sending STATUS.
+   Grey the chart cards so stale traces read as "not measuring" rather than
+   a live signal — the strip (battery, mask, SD) stays fully legible. */
+.sensing-idle .chart-card {
+  filter: grayscale(1);
+  opacity: 0.45;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+/* Remote sensing enable toggle */
+button.sensing {
+  background: transparent;
+  color: var(--accent-green);
+  border: 1px solid var(--accent-green);
+}
+button.sensing.off {
+  color: var(--accent-amber);
+  border-color: var(--accent-amber);
+}
+
 /* Offline-sensor warning (rides at the end of the strip) */
 .offline-note {
   font-size: 0.72rem;
@@ -282,6 +351,35 @@ button.demo.active { background: var(--accent-amber); color: #000; }
   text-overflow: ellipsis;
   min-width: 0;
 }
+
+/* Demo sandbox inputs under each Visualized map: one small field per
+   sensor; empty = follow the live demo value */
+.viz-inputs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+.viz-inputs label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.viz-inputs input {
+  width: 5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glass);
+  border-radius: 0.5rem;
+  color: #e8ecf5;
+  padding: 0.32rem 0.45rem;
+  font-size: 1.2rem;
+  font-variant-numeric: tabular-nums;
+}
+.viz-inputs input:focus { outline: 1px solid var(--accent-green); }
 
 /* Small caption inline in a chart header (e.g. pressure tare baseline) */
 .chart-footnote {
@@ -413,7 +511,7 @@ h1, h2 {
 }
 
 h1 {
-  font-size: 1.05rem;
+  font-size: 1.4rem;
   background: linear-gradient(to right, var(--accent-blue), #ff4db8);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;

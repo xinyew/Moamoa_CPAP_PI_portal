@@ -1,5 +1,5 @@
 import React from 'react';
-import { MASK_PATH_D, MASK_VIEWBOX, MASK_CELLS, GRID_STEP } from './maskGeometry';
+import { MASK_PATH_D, MASK_VIEWBOX, MASK_CELLS, GRID_STEP, REGIONS, REGION_DIVIDERS, HUB, regionOf } from './maskGeometry';
 
 /*
  * One heatmap of the mask flex board: inverse-distance-weighted field
@@ -26,27 +26,44 @@ const makeRamp = (stops) => {
   };
 };
 
-// IDW (power 2) over the live sensors; d clamped so a cell on top of a
-// sensor takes exactly its value.
-const idw = (cx, cy, pts) => {
-  let num = 0, den = 0;
-  for (const p of pts) {
-    const d2 = Math.max((cx - p.x) ** 2 + (cy - p.y) ** 2, 1);
-    const w = 1 / d2;
-    num += w * p.value;
-    den += w;
-  }
-  return num / den;
+// Field ALONG the ring: piecewise-LINEAR interpolation between angularly
+// adjacent sensors (circular). A sensor is the anchor point of its stretch
+// of ring, and its influence spreads all the way to the neighboring
+// sensors — the whole zones between them shade, not a blob around the dot.
+// e.g. H3 (upper right) rising warms nasal bridge AND the right arm; H2
+// (lower right) rising warms right AND chin; H1 (left) warms left AND
+// chin. IDW variants could not express this: they re-concentrate around
+// the sensor and flatten everything else toward the mean.
+const angOf = (x, y) => Math.atan2(y - HUB.y, x - HUB.x);
+const idw = (cx, cy, pts) => {  // pts sorted ascending by .ang
+  const n = pts.length;
+  if (n === 1) return pts[0].value;
+  const a = angOf(cx, cy);
+  let i = pts.findIndex(p => p.ang > a);
+  const next = i === -1 ? pts[0] : pts[i];
+  const prev = i <= 0 ? pts[n - 1] : pts[i - 1];
+  let span = next.ang - prev.ang;
+  if (span <= 0) span += 2 * Math.PI;          // wrap across ±180°
+  let t = a - prev.ang;
+  if (t < 0) t += 2 * Math.PI;
+  return prev.value + (next.value - prev.value) * (t / span);
 };
 
-const MaskHeatmap = ({ title, unit, sensors, stops, fmt }) => {
+const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain, footer }) => {
   const ramp = makeRamp(stops);
-  const live = sensors.filter(s => s.live && s.value != null && !isNaN(s.value));
+  const live = sensors.filter(s => s.live && s.value != null && !isNaN(s.value))
+    .map(s => ({ ...s, ang: angOf(s.x, s.y) }))
+    .sort((a, b) => a.ang - b.ang);
 
-  // Domain from the live values, padded so sensor noise doesn't paint a
-  // full-scale rainbow when the field is nearly uniform.
+  // FIXED physical domain when given (e.g. skin 34-41 °C): color then means
+  // the same thing on every glance and across sessions; out-of-range values
+  // clamp to the ends. Without one (Δ mode), fall back to fitting the live
+  // values, padded so sensor noise doesn't paint a full-scale rainbow when
+  // the field is nearly uniform.
   let lo = 0, hi = 1;
-  if (live.length) {
+  if (domain) {
+    [lo, hi] = domain;
+  } else if (live.length) {
     lo = Math.min(...live.map(s => s.value));
     hi = Math.max(...live.map(s => s.value));
     const pad = Math.max((hi - lo) * 0.15, 0.25);
@@ -58,14 +75,24 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt }) => {
 
   return (
     <div className="glass-card viz-card chart-card">
-      <div className="chart-head" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-          {title} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>({unit})</span>
+      {/* Title CENTERED and doubled. The card is too narrow for a big title
+          plus corner controls on one line, so ABS/Δ (and the demo inputs)
+          live on a centered second line instead of overlapping the title. */}
+      <div className="chart-head" style={{ justifyContent: 'center' }}>
+        <h2 style={{ fontSize: '1.7rem', whiteSpace: 'nowrap', textAlign: 'center' }}>
+          {title} <span style={{ color: 'var(--text-dim)', fontWeight: 400, fontSize: '1rem' }}>({unit})</span>
         </h2>
-        {live.length === 0 && (
-          <span style={{ fontSize: '0.72rem', color: 'var(--accent-amber)' }}>no live sensors</span>
-        )}
       </div>
+      {(controls || footer || live.length === 0) && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center',
+                      gap: '0.8rem', flexWrap: 'wrap', marginBottom: '0.2rem' }}>
+          {live.length === 0 && (
+            <span style={{ fontSize: '0.72rem', color: 'var(--accent-amber)' }}>no live sensors</span>
+          )}
+          {controls}
+          {footer}
+        </div>
+      )}
       <div className="chart-body" style={{ display: 'flex', flexDirection: 'column' }}>
         <svg viewBox={`${x} ${y} ${w} ${h}`} style={{ flex: 1, minHeight: 0, width: '100%' }}
              preserveAspectRatio="xMidYMid meet">
@@ -84,33 +111,69 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt }) => {
                 ))
               : <rect x={x} y={y} width={w} height={h} fill="rgba(255,255,255,0.03)" />}
           </g>
+          {/* anatomical zones A-D: dashed dividers (clipped to the ring, so
+              the parts crossing the cutout vanish) + a letter per zone */}
+          <g clipPath={`url(#${clipId})`}>
+            {REGION_DIVIDERS.map(([[x1, y1], [x2, y2]], i) => (
+              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke="rgba(255,255,255,0.4)" strokeWidth="0.6"
+                    strokeDasharray="2 1.4" />
+            ))}
+          </g>
+          {/* zone name + that zone's sensor reading, both at the ZONE CENTER
+              (user request): the number belongs to the region the sensor
+              represents, not to the dot. Zones without a sensor of this
+              kind (e.g. nasal bridge has no SHT/TMP) just show the name. */}
+          {REGIONS.map(r => {
+            const rs = sensors.filter(s => regionOf(s.x, s.y) === r.id);
+            const txt = rs.length
+              ? rs.map(s => (s.live && s.value != null ? fmt(s.value) : 'off')).join(' · ')
+              : null;
+            return (
+              <g key={r.id}>
+                <text x={r.label.x} y={r.label.y} textAnchor="middle"
+                      fontSize="3.6" fontWeight="800" fill="rgba(255,255,255,0.92)"
+                      stroke="#05050a" strokeWidth="0.8" paintOrder="stroke">
+                  {r.name}
+                </text>
+                {txt && (
+                  <text x={r.label.x} y={r.label.y + 5.4} textAnchor="middle"
+                        fontSize="4.6" fontWeight="800" fill="#ffffff"
+                        stroke="#05050a" strokeWidth="0.9" paintOrder="stroke">
+                    {txt}
+                  </text>
+                )}
+              </g>
+            );
+          })}
           {/* one path strokes both the outer profile and the hole edge */}
           <path d={MASK_PATH_D} fill="none"
                 stroke="rgba(160,220,255,0.45)" strokeWidth="0.7" />
+          {/* gray dot + ID tag per sensor (T1/H2/...): the reading lives at
+              the zone center, the tag says which sensor sits where. A dead
+              sensor fades to a translucent ghost. */}
           {sensors.map(s => (
             <g key={s.label}>
               <circle cx={s.x} cy={s.y} r="2.1"
-                      fill={s.live && s.value != null ? (s.color || '#ffffff') : 'none'}
-                      stroke={s.live && s.value != null ? '#05050a' : 'rgba(255,255,255,0.4)'}
-                      strokeWidth="0.6" strokeDasharray={s.live && s.value != null ? undefined : '1 1'} />
-              <text x={s.x} y={s.y - 3.4} textAnchor="middle" fontSize="4"
-                    fontWeight="700" fill="#ffffff" stroke="#05050a"
-                    strokeWidth="0.8" paintOrder="stroke">
-                {s.label} {s.live && s.value != null ? fmt(s.value) : 'off'}
+                      fill={s.live && s.value != null ? '#9ca3af' : 'rgba(156,163,175,0.25)'} />
+              <text x={s.x} y={s.y - 3.2} textAnchor="middle" fontSize="3.5"
+                    fontWeight="700" fill="#cdd6f4" stroke="#05050a"
+                    strokeWidth="0.7" paintOrder="stroke">
+                {s.label}
               </text>
             </g>
           ))}
         </svg>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
           <span className="num" style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
-            {live.length ? fmt(lo) : '--'}
+            {(domain || live.length) ? fmt(lo) : '--'}
           </span>
           <div style={{
             flex: 1, height: 6, borderRadius: 3,
             background: `linear-gradient(to right, ${stops[0]}, ${stops[1]}, ${stops[2]})`
           }} />
           <span className="num" style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
-            {live.length ? fmt(hi) : '--'}
+            {(domain || live.length) ? fmt(hi) : '--'}
           </span>
         </div>
       </div>
@@ -125,6 +188,10 @@ const close = (a, b) => (a == null && b == null) ||
 export default React.memo(MaskHeatmap, (prev, next) =>
   prev.title === next.title &&
   prev.unit === next.unit &&
+  // `mode` folds in anything the corner controls render from (ABS/Δ state,
+  // streaming) — the `controls` node itself is a fresh JSX element every
+  // render and must NOT be compared directly.
+  prev.mode === next.mode &&
   prev.sensors.length === next.sensors.length &&
   prev.sensors.every((s, i) =>
     s.live === next.sensors[i].live && close(s.value, next.sensors[i].value)));

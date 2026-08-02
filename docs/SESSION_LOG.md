@@ -6,6 +6,36 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 — full rev2 UI ported to the tablet; APK built
+
+All of rev2-enhancement through 5710df1 carried onto `android-tablet-app`
+as a PORT (not a merge, per the standing rule):
+- MaskHeatmap / maskGeometry / index.css taken wholesale from rev2 (no
+  android-specific content in them); Dashboard taken from rev2 and the
+  android delta re-applied on top (isNative import, RTT toggle hidden
+  natively, strip-stale class, CONNECT FAILED / NO DATA badge states
+  folded ABOVE the rev2 sensing badge: connectError > statusStale >
+  DEMO > NO-DATA > PAUSED > SENSING OFF/NO MASK > LIVE).
+- useComm kept the ANDROID version as base (bleTransport seam + stale
+  fixes) and gained the 'P' toggle from rev2 — setSensing writes
+  [0x50, x] via conn.write() (the uniform web/native handle), sensingOn
+  parsed from STATUS bit2, demo reports sensingOn true.
+- Stale CSS (.strip-stale / .status-stale) added to the rev2 stylesheet.
+
+Brings to the tablet: sensor matching, viz zones + along-ring gradient,
+fixed heat scales + SNR map, demo sandbox inputs, big titles, split
+channel colors + pins, thin traces — everything from the 2026-08-02 web
+rounds.
+
+Verified: vite build clean; web smoke on :5172 (DEMO badge, Sensing
+toggle present, RTT visible on web only, 4 viz maps, 14 sandbox inputs,
+no console errors). cap sync + gradlew assembleDebug OK (22 s,
+incremental). APK copied to Downloads\CPAP_PI_Portal_rev2.apk (4.0 MB,
+debug-signed). NOT verified on-device: no tablet attached to this
+machine — install manually and re-run the SD + live-board recipes.
+
+---
+
 ## Session 2026-08-01 (later still) — stale-data fixes on `android-tablet-app`
 
 Reported symptom: the tablet kept showing "SD OK" after the card was

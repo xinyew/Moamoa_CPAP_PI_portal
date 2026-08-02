@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -9,11 +9,11 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
-import { Activity, Thermometer, Droplets, BatteryMedium, Play, Square, Pause, Bluetooth, Cable, Gauge, LayoutGrid, Layers, FlaskConical, Flag, Map } from 'lucide-react';
+import { Activity, Thermometer, Droplets, BatteryMedium, Play, Square, Pause, Bluetooth, Cable, Gauge, LayoutGrid, Layers, FlaskConical, Flag, Map, Power } from 'lucide-react';
 import { useComm, CH_OF } from './useComm';
 import { isNative } from './bleTransport';
 import MaskHeatmap from './MaskHeatmap';
-import { BARO_POS, SHT_POS, TMP_POS } from './maskGeometry';
+import { BARO_POS, SHT_POS, TMP_POS, PPG_POS, MASK_PATH_D, MASK_VIEWBOX } from './maskGeometry';
 
 // Sweet-neon theme: color follows the SITE, not the channel. Each site
 // keeps ONE fixed neon color in every chart (and its split-view column),
@@ -26,6 +26,56 @@ const PPG_RED_COLORS   = SITE_COLORS;
 const PPG_IR_COLORS    = SITE_COLORS;
 const PPG_GREEN_COLORS = SITE_COLORS;
 const BARO_COLORS      = SITE_COLORS;
+
+// SPLIT view colors follow the CHANNEL instead: the columns already encode
+// the site, so within a row every Red chart is red, IR pink, Green green,
+// pressure white — the row reads as one quantity at a glance.
+const CH_COLORS = { p: '#f2f5ff', r: '#ff5252', i: '#ff4db8', g: '#2ee880' };
+
+// One thermal ramp for every heatmap: coldest = blue, hottest = red, with
+// a fixed PHYSICAL domain per quantity so color always means the same
+// value (skin 34-41 °C, RH 30-100 %, pressure 755-900 mmHg).
+// Traffic-light ramp: green = safe, yellow = caution, PURE red = alarm.
+const THERMAL_STOPS = ['#22c55e', '#facc15', '#ff0000'];
+// Inverted ramp for QUALITY metrics (PPG SNR): high is good/green, zero is
+// the alarming end.
+const SNR_STOPS = ['#ff0000', '#facc15', '#22c55e'];
+
+// Tiny mask-ring locator: shows WHERE on the flex a sensor physically sits
+// (same outline + coordinates as the Visualized view). The dot takes the
+// plot's own line color so the pin reads as "this trace, right here".
+const SitePin = ({ pos, color = '#ffe14d' }) => {
+  const { x, y, w, h } = MASK_VIEWBOX;
+  return (
+    <svg viewBox={`${x} ${y} ${w} ${h}`} preserveAspectRatio="xMidYMid meet"
+         style={{ height: '4em', width: 'auto', flex: '0 0 auto', opacity: 0.95 }}>
+      <path d={MASK_PATH_D} fillRule="evenodd" fill="rgba(255,255,255,0.07)"
+            stroke="rgba(160,220,255,0.6)" strokeWidth="1.2" />
+      <circle cx={pos.x} cy={pos.y} r="6" fill={color} stroke="#05050a" strokeWidth="1.6" />
+    </svg>
+  );
+};
+
+// Overlay-chart legend: the ring with ALL four sensors of that kind, each
+// dot in its site color and numbered — maps line colors to face positions.
+const SiteLegend = ({ posMap }) => {
+  const { x, y, w, h } = MASK_VIEWBOX;
+  return (
+    <svg viewBox={`${x} ${y} ${w} ${h}`} preserveAspectRatio="xMidYMid meet"
+         style={{ height: '4em', width: 'auto', flex: '0 0 auto', opacity: 0.95 }}>
+      <path d={MASK_PATH_D} fillRule="evenodd" fill="rgba(255,255,255,0.07)"
+            stroke="rgba(160,220,255,0.6)" strokeWidth="1.2" />
+      {[1, 2, 3, 4].map(i => posMap[i] && (
+        <g key={i}>
+          <circle cx={posMap[i].x} cy={posMap[i].y} r="7.5"
+                  fill={SITE_COLORS[i - 1]} stroke="#05050a" strokeWidth="1.6" />
+          <text x={posMap[i].x} y={posMap[i].y + 3.4} textAnchor="middle"
+                fontSize="10" fontWeight="800" fill="#05050a">{i}</text>
+        </g>
+      ))}
+    </svg>
+  );
+};
 
 const fmt1 = (v) => (v === undefined ? '--' : (+v).toFixed(1));
 const fmt2 = (v) => (v == null ? '--' : (+v).toFixed(2));
@@ -87,11 +137,14 @@ const yieldOf = (rows, key) => {
 // Single-signal card used by split view — fills its grid cell.
 // `lane` (0..3) pins the card to a fixed site column so the same sensor's
 // channels stack vertically even when other sites are offline.
-const MiniChart = ({ title, dataKey, color, data, latest, unit, xAxis, tooltipFmt, dot, lane }) => (
+const MiniChart = ({ title, dataKey, color, data, latest, unit, xAxis, tooltipFmt, dot, lane, indicator }) => (
   <div className="glass-card mini-card chart-card"
        style={lane != null ? { gridColumn: `${lane * 3 + 1} / span 3` } : undefined}>
     <div className="chart-head" style={{ justifyContent: 'space-between' }}>
-      <h2 style={{ fontSize: '0.78rem', color: color, whiteSpace: 'nowrap' }}>{title}</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+        <h2 style={{ fontSize: '0.78rem', color: color, whiteSpace: 'nowrap' }}>{title}</h2>
+        {indicator}
+      </div>
       <span className="num" style={{ fontSize: '0.85rem', fontWeight: 700 }}>
         {latest}{unit && <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}> {unit}</span>}
       </span>
@@ -104,7 +157,7 @@ const MiniChart = ({ title, dataKey, color, data, latest, unit, xAxis, tooltipFm
           <YAxis stroke="var(--text-dim)" fontSize={10} domain={['auto', 'auto']} width={44} />
           <Tooltip contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle}
                    labelFormatter={tooltipFmt} isAnimationActive={false} />
-          <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2} dot={dot ?? markDot} activeDot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1} dot={dot ?? markDot} activeDot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -134,6 +187,7 @@ const Dashboard = () => {
     connectError,
     statusStale,
     commMode,
+    setSensing,
     setCommMode
   } = useComm();
 
@@ -145,9 +199,85 @@ const Dashboard = () => {
   const [baroDelta, setBaroDelta] = useState(false);
   const [baroBase, setBaroBase] = useState(null);     // {p1..p4} at tare time
 
-  const tareBaro = () => setBaroBase({
-    p1: latestData.p1, p2: latestData.p2, p3: latestData.p3, p4: latestData.p4,
-  });
+  // Demo sandbox for the Visualized maps: while demo streams, any sensor
+  // can be overridden with a typed value to see exactly how the field
+  // reacts. Overrides replace the FINAL displayed value (bypassing
+  // matching/Δ — what you type is what the map shows) and clear when demo
+  // stops. Keys: tmp1..3, rh1..3, p1..4, snr1..4.
+  const [demoOv, setDemoOv] = useState({});
+  useEffect(() => { if (!isDemo) setDemoOv({}); }, [isDemo]);
+  const ov = (k) => {
+    if (!isDemo) return null;
+    const raw = demoOv[k];
+    if (raw == null || raw === '') return null;
+    const n = +raw;
+    return Number.isNaN(n) ? null : n;
+  };
+
+  // Skin temp / humidity get the same ABS/Δ treatment on their heatmaps:
+  // absolute values sit in a narrow band (skin ~33-34 °C), so the CHANGE
+  // since a tare is what makes a developing pressure point visible.
+  const [tmpDelta, setTmpDelta] = useState(false);
+  const [tmpBase, setTmpBase] = useState(null);       // {1..3} at tare time
+  const [rhDelta, setRhDelta] = useState(false);
+  const [rhBase, setRhBase] = useState(null);         // {1..3} at tare time
+
+  // ---- sensor matching (units have no factory calibration) ----
+  // The sensors of a kind can't be absolutely calibrated, so the constant
+  // sensor-to-sensor bias is removed by re-referencing everything to the
+  // group: shortly after a stream starts, ~3 s of readings are averaged per
+  // sensor, and from then on each sensor displays
+  //     groupMean(baselines) + (value − itsOwnBaseline)
+  // i.e. every sensor's CHANGE rides on the shared mean. Relative dynamics
+  // are untouched; only the fixed offsets collapse. CSV recording stays RAW.
+  const [matchOff, setMatchOff] = useState(null); // {p:{1..4}, tmp:{1..3}, rh:{1..3}, air:{1..3}}
+  const latestRef = useRef(latestData);
+  latestRef.current = latestData;
+  useEffect(() => {
+    // (isConnected || isDemo) inline: `streaming` is declared further down
+    if (!(isConnected || isDemo)) { setMatchOff(null); return; }
+    const samples = [];
+    const iv = setInterval(() => {
+      const d = latestRef.current;
+      samples.push({
+        p: [1, 2, 3, 4].map(i => d[`p${i}`]),
+        tmp: [1, 2, 3].map(i => d[`tmp${i}`]),
+        rh: [1, 2, 3].map(i => d[`sht${i}h`]),
+        air: [1, 2, 3].map(i => d[`sht${i}t`]),
+      });
+      if (samples.length < 6) return;
+      clearInterval(iv);
+      const offs = {};
+      for (const [g, n] of [['p', 4], ['tmp', 3], ['rh', 3], ['air', 3]]) {
+        const means = [];
+        for (let k = 0; k < n; k++) {
+          // 0 doubles as the firmware's no-data sentinel for these fields
+          const vals = samples.map(s => s[g][k]).filter(v => v != null && !Number.isNaN(v) && v !== 0);
+          means.push(vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null);
+        }
+        const live = means.filter(m => m != null);
+        const gm = live.length ? live.reduce((a, b) => a + b, 0) / live.length : 0;
+        offs[g] = {};
+        for (let k = 0; k < n; k++) offs[g][k + 1] = means[k] == null ? 0 : means[k] - gm;
+      }
+      setMatchOff(offs);
+    }, 500);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, isDemo]);
+
+  const mOff = (g, i) => (matchOff && matchOff[g] ? matchOff[g][i] || 0 : 0);
+  const mP = (i) => { const v = latestData[`p${i}`]; return v == null ? v : +(v - mOff('p', i)).toFixed(2); };
+  const mTmp = (i) => { const v = latestData[`tmp${i}`]; return v == null ? v : +(v - mOff('tmp', i)).toFixed(2); };
+  const mRh = (i) => { const v = latestData[`sht${i}h`]; return v == null ? v : +(v - mOff('rh', i)).toFixed(2); };
+  const mAir = (i) => { const v = latestData[`sht${i}t`]; return v == null ? v : +(v - mOff('air', i)).toFixed(2); };
+
+  // Tares capture the MATCHED values, so Δ is measured on the same scale
+  // that is displayed. (No Tare button anymore — pressing Δ re-tares at the
+  // current readings every time; ABS⇄Δ is the whole workflow.)
+  const tareBaro = () => setBaroBase({ p1: mP(1), p2: mP(2), p3: mP(3), p4: mP(4) });
+  const tareTmp = () => setTmpBase({ 1: mTmp(1), 2: mTmp(2), 3: mTmp(3) });
+  const tareRh = () => setRhBase({ 1: mRh(1), 2: mRh(2), 3: mRh(3) });
 
   // Keyboard shortcut: press M to drop an event marker (ignored in inputs)
   useEffect(() => {
@@ -162,6 +292,16 @@ const Dashboard = () => {
   }, []);
 
   const streaming = isConnected || isDemo; // demo streams but is NOT a real connection
+
+  // Sensing state comes from STATUS flags bit2 — the board's own view, never
+  // the last 'P' we sent. It also clears on the automatic mask-absent standby,
+  // so bit0 tells the two apart: no mask is the board protecting itself, mask
+  // present with sensing off is a deliberate user pause.
+  const sensingOn = latestData.sensingOn !== false;
+  const sensingIdle = isConnected && !sensingOn;
+  const idleReason = latestData.maskPresent ? 'paused by user' : 'mask disconnected';
+  // 'P' rides the NUS RX characteristic, which only exists on a BLE link.
+  const canToggleSensing = isConnected && commMode === 'bluetooth';
 
   // X-axis label: seconds elapsed since the stream started (device timebase)
   const fmtElapsed = (t) => (streamStart != null && typeof t === 'number' ? `${((t - streamStart) / 1000).toFixed(1)}s` : '');
@@ -223,6 +363,26 @@ const Dashboard = () => {
   // AC mode swaps PPG channels to their baseline-removed (…Ac) counterparts
   const ppgKey = (k) => (ppgAc ? `${k}Ac` : k);
 
+  // Overlay AC y-domain: recharts' plain auto-fit is hostage to the AC
+  // baseline's settling transient — the slow EMA starts at the first raw
+  // sample, so the first seconds hold huge decaying values that stretch the
+  // axis until the actual pulse is a flat line. Fit to the 5th-95th
+  // percentile of the visible window instead (plus headroom) and let the
+  // transient clip off-scale.
+  const acYDomain = (keys) => {
+    if (!ppgAc) return ['auto', 'auto'];
+    const vals = [];
+    for (const d of ppgData) {
+      for (const k of keys) { const v = d[`${k}Ac`]; if (v != null) vals.push(v); }
+    }
+    if (vals.length < 20) return ['auto', 'auto'];
+    vals.sort((a, b) => a - b);
+    const q = (p) => vals[Math.floor(p * (vals.length - 1))];
+    const lo = q(0.05), hi = q(0.95);
+    const pad = Math.max((hi - lo) * 0.25, 1);
+    return [Math.floor(lo - pad), Math.ceil(hi + pad)];
+  };
+
   // Per-site delivery rate over the visible window, computed for ALL four
   // sites before deciding what to draw.
   const SPARSE_YIELD = 0.6;
@@ -251,39 +411,105 @@ const Dashboard = () => {
   // Pressure in Δ mode: subtract the tare so the contact increment is readable
   // against the ~730 mmHg absolute baseline.
   const baroKey = (b) => (baroDelta && baroBase ? `d${b}` : b);
-  const baroData = (baroDelta && baroBase)
+  // Chart data: sensor-matched always, Δ-shifted on top when enabled.
+  const baroData = (matchOff || (baroDelta && baroBase))
     ? history.map(d => {
         const o = { ...d };
         for (let i = 1; i <= 4; i++) {
-          o[`dp${i}`] = d[`p${i}`] == null ? null : +(d[`p${i}`] - (baroBase[`p${i}`] ?? 0)).toFixed(2);
+          const v = d[`p${i}`];
+          const m = v == null ? null : +(v - mOff('p', i)).toFixed(2);
+          o[`p${i}`] = m;
+          if (baroDelta && baroBase) {
+            o[`dp${i}`] = m == null ? null : +(m - (baroBase[`p${i}`] ?? 0)).toFixed(2);
+          }
         }
         return o;
       })
     : history;
   const baroUnit = (baroDelta && baroBase) ? 'Δ mmHg' : 'mmHg';
   const baroLatest = (i) => {
-    const v = latestData[`p${i}`];
+    const o = ov(`p${i}`);
+    if (o != null) return o;
+    const v = mP(i);
     if (v == null) return null;
     return (baroDelta && baroBase) ? v - (baroBase[`p${i}`] ?? 0) : v;
   };
   const baroBaseText = (baroDelta && baroBase)
     ? `Baseline   P1 ${fmt2(baroBase.p1)}  /  P2 ${fmt2(baroBase.p2)}  /  P3 ${fmt2(baroBase.p3)}  /  P4 ${fmt2(baroBase.p4)}   mmHg`
-    : 'Absolute pressure — press Δ to tare at the current reading';
+    : 'Absolute pressure — press Δ to re-baseline at the current reading';
 
-  // ABS/Δ + Tare, shared by both views so the controls never disappear
+  // ABS/Δ — no separate Tare button: pressing Δ re-baselines at the current
+  // readings every time, so ABS⇄Δ is the whole workflow.
   const baroControlGroup = (
-    <>
-      <div className="segmented">
-        <button className={`segment ${!baroDelta ? 'active' : ''}`} onClick={() => setBaroDelta(false)}
-                title="Absolute pressure (about 730 mmHg here, set by elevation)">ABS</button>
-        <button className={`segment ${baroDelta ? 'active' : ''}`}
-                onClick={() => { if (!baroBase) tareBaro(); setBaroDelta(true); }}
-                title="Show change from the baseline, so contact pressure (tens of mmHg) is not buried in the atmospheric offset">Δ</button>
-      </div>
-      <button className="mark" disabled={!streaming} onClick={tareBaro}
-              title="Set the current reading as the new baseline">Tare</button>
-    </>
+    <div className="segmented">
+      <button className={`segment ${!baroDelta ? 'active' : ''}`} onClick={() => setBaroDelta(false)}
+              title="Absolute pressure (about 730 mmHg here, set by elevation)">ABS</button>
+      <button className={`segment ${baroDelta ? 'active' : ''}`}
+              onClick={() => { tareBaro(); setBaroDelta(true); }}
+              title="Change from this moment — contact pressure (tens of mmHg) is not buried in the atmospheric offset. Pressing Δ again re-baselines.">Δ</button>
+    </div>
   );
+
+  // Corner controls for the Visualized maps — same ABS/Δ pattern, one
+  // independent instance per quantity.
+  const vizCorner = (isDelta, setDelta, doTare, what) => (
+    <div className="segmented">
+      <button className={`segment ${!isDelta ? 'active' : ''}`} onClick={() => setDelta(false)}
+              title="Absolute values">ABS</button>
+      <button className={`segment ${isDelta ? 'active' : ''}`}
+              onClick={() => { doTare(); setDelta(true); }}
+              title={`Change from this moment — small ${what} shifts stand out. Pressing Δ again re-baselines.`}>Δ</button>
+    </div>
+  );
+  const tmpVal = (i) => {
+    const o = ov(`tmp${i}`);
+    if (o != null) return o;
+    const v = mTmp(i);
+    return (tmpDelta && tmpBase && v != null) ? +(v - (tmpBase[i] ?? 0)).toFixed(2) : v;
+  };
+  const rhVal = (i) => {
+    const o = ov(`rh${i}`);
+    if (o != null) return o;
+    const v = mRh(i);
+    return (rhDelta && rhBase && v != null) ? +(v - (rhBase[i] ?? 0)).toFixed(2) : v;
+  };
+
+  // PPG IR signal quality per site: RMS of the AC (pulsatile) component over
+  // the buffer, against a noise estimate from the first difference — the
+  // pulse (1-3 Hz) barely contributes to sample-to-sample steps at 100 Hz,
+  // while broadband noise dominates them. Clean pulse ⇒ big ratio; sensor
+  // seeing nothing but noise ⇒ ratio near white-noise floor (~1).
+  const irSnr = (site) => {
+    const key = `i${site}Ac`;
+    const vals = [];
+    for (const d of history) { const v = d[key]; if (v != null) vals.push(v); }
+    const n = vals.length;
+    if (n < 50) return null;
+    let s2 = 0, d2 = 0;
+    for (let k = 0; k < n; k++) {
+      s2 += vals[k] * vals[k];
+      if (k > 0) { const dd = vals[k] - vals[k - 1]; d2 += dd * dd; }
+    }
+    const rms = Math.sqrt(s2 / n);
+    const noise = Math.sqrt(d2 / (n - 1)) / Math.SQRT2;
+    return +(rms / Math.max(noise, 1e-6)).toFixed(2);
+  };
+
+  // Per-map demo input row: type a value per sensor, empty = live demo value.
+  const demoInputs = (prefix, labels) => (isDemo ? (
+    <div className="viz-inputs">
+      {labels.map((lb, idx) => (
+        <label key={lb}>
+          <span>{lb}</span>
+          <input type="number" step="0.1" placeholder="auto"
+                 value={demoOv[`${prefix}${idx + 1}`] ?? ''}
+                 onChange={(e) => setDemoOv(o => ({ ...o, [`${prefix}${idx + 1}`]: e.target.value }))} />
+        </label>
+      ))}
+    </div>
+  ) : null);
+  const ovSig = (prefix, n) =>
+    Array.from({ length: n }, (_, k) => demoOv[`${prefix}${k + 1}`] ?? '').join(',');
 
   // Everything between the header and the charts rides in ONE slim strip:
   // env/status telemetry plus the chart controls (PPG window, RAW/AC,
@@ -291,58 +517,60 @@ const Dashboard = () => {
   const stripRow = (
     <div className={`glass-card strip-card${statusStale ? ' strip-stale' : ''}`}
          title={statusStale ? 'Stale — no STATUS frame for over 4 s' : undefined}>
-      <div className="strip-item" title="SHT40 relative humidity, sensors 1/2/3">
-        <Droplets color="var(--accent-blue)" size={14} />
-        <span className="strip-label">RH%</span>
-        <span className="strip-value">{fmt1(latestData.sht1h)}/{fmt1(latestData.sht2h)}/{fmt1(latestData.sht3h)}</span>
-      </div>
-      <div className="strip-item" title="SHT40 air temperature, sensors 1/2/3">
-        <Thermometer color="var(--accent-blue)" size={14} />
-        <span className="strip-label">Air°C</span>
-        <span className="strip-value">{fmt1(latestData.sht1t)}/{fmt1(latestData.sht2t)}/{fmt1(latestData.sht3t)}</span>
-      </div>
-      <div className="strip-item" title="TMP117 skin temperature, sensors 1/2/3">
-        <Thermometer color="var(--accent-amber)" size={14} />
-        <span className="strip-label">Skin°C</span>
-        <span className="strip-value">{fmt1(latestData.tmp1)}/{fmt1(latestData.tmp2)}/{fmt1(latestData.tmp3)}</span>
-      </div>
-      <div className="strip-item" title="Battery voltage">
-        <BatteryMedium color="var(--accent-green)" size={14} />
-        <span className="strip-value">{((latestData.vbat || 0) / 1000).toFixed(2)}<span className="strip-label">V</span></span>
-      </div>
-      <div className="strip-item" title="microSD card on the board (onboard logging)">
-        <Gauge color="var(--accent-yellow)" size={14} />
-        <span className="strip-label">SD</span>
-        <span className="strip-value">{latestData.sdOk ? 'OK' : '--'}</span>
-      </div>
-
-      <div className="strip-sep" />
-
-      <div className="strip-item">
-        <span className="toolbar-label">Window</span>
-        <div className="segmented">
-          {WINDOW_OPTIONS.map(opt => (
-            <button key={opt} className={`segment ${windowSec === opt ? 'active' : ''}`}
-                    onClick={() => setWindowSec(opt)}
-                    title={opt === 'full' ? 'Whole buffer (about the last 8 s)' : `Last ${opt} s of real time`}>
-              {opt === 'full' ? 'Full' : `${opt}s`}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="strip-item">
-        <span className="toolbar-label">PPG</span>
-        <div className="segmented">
-          <button className={`segment ${!ppgAc ? 'active' : ''}`} onClick={() => setPpgAc(false)}
-                  title="Raw sensor counts, DC included — use for signal strength and contact">RAW</button>
-          <button className={`segment ${ppgAc ? 'active' : ''}`} onClick={() => setPpgAc(true)}
-                  title="Slow drift removed, pulsatile part only — puts all four sites on a comparable scale">AC</button>
-        </div>
-      </div>
-      <div className="strip-item">
-        <span className="toolbar-label">Pressure</span>
-        {baroControlGroup}
-      </div>
+      {/* Telemetry readouts: one LARGE type size for labels, icons and
+          values alike. All sensor numbers are displayed sensor-matched
+          (group mean + own change). The SHT40's own air temp rides small
+          under RH — context, not a primary reading. In the Visualized view
+          the RH/skin readouts drop out (the maps carry them); battery and
+          SD have no map, so they stay. */}
+      {viewMode !== 'viz' && (
+        <>
+          <div className="strip-item big" title="SHT40 relative humidity, sensors 1/2/3, sensor-matched (small line: SHT40 air temperature)">
+            <Droplets color="var(--accent-blue)" size={22} />
+            <div className="strip-col">
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
+                <span className="strip-label">RH%</span>
+                <span className="strip-value">{fmt1(mRh(1))}/{fmt1(mRh(2))}/{fmt1(mRh(3))}</span>
+              </div>
+              <span className="strip-sub">Air {fmt1(mAir(1))}/{fmt1(mAir(2))}/{fmt1(mAir(3))} °C</span>
+            </div>
+          </div>
+          <div className="strip-item big" title="TMP117 skin temperature, sensors 1/2/3, sensor-matched">
+            <Thermometer color="var(--accent-amber)" size={22} />
+            <span className="strip-label">Skin°C</span>
+            <span className="strip-value">{fmt1(mTmp(1))}/{fmt1(mTmp(2))}/{fmt1(mTmp(3))}</span>
+          </div>
+        </>
+      )}
+      {/* Chart controls only where charts exist: the Visualized view has no
+          time series (Window / RAW-AC are meaningless there) and pressure
+          ABS/Δ now lives on the pressure map itself. */}
+      {viewMode !== 'viz' && (
+        <>
+          <div className="strip-sep" />
+          <div className="strip-item">
+            <span className="toolbar-label">Window</span>
+            <div className="segmented">
+              {WINDOW_OPTIONS.map(opt => (
+                <button key={opt} className={`segment ${windowSec === opt ? 'active' : ''}`}
+                        onClick={() => setWindowSec(opt)}
+                        title={opt === 'full' ? 'Whole buffer (about the last 8 s)' : `Last ${opt} s of real time`}>
+                  {opt === 'full' ? 'Full' : `${opt}s`}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="strip-item">
+            <span className="toolbar-label">PPG</span>
+            <div className="segmented">
+              <button className={`segment ${!ppgAc ? 'active' : ''}`} onClick={() => setPpgAc(false)}
+                      title="Raw sensor counts, DC included — use for signal strength and contact">RAW</button>
+              <button className={`segment ${ppgAc ? 'active' : ''}`} onClick={() => setPpgAc(true)}
+                      title="Slow drift removed, pulsatile part only — puts all four sites on a comparable scale">AC</button>
+            </div>
+          </div>
+        </>
+      )}
 
       {(offlinePpg.length > 0 || darkPpg.length > 0 || lossy.length > 0) ? (
         <span className="offline-note" title="OFFLINE = failed the boot probe; the firmware never retries, so it stays out until reboot. ALL-ZERO = the chip answers on I2C and the read succeeds, but red/IR/green are all 0 — LEDs likely never turned on. YIELD = share of samples that carried a value.">
@@ -355,9 +583,18 @@ const Dashboard = () => {
               `YIELD ${lossy.map(site => `PPG${site} ${Math.round(ppgYield[site] * 100)}%`).join(' / ')}`,
           ].filter(Boolean).join('  |  ')}
         </span>
-      ) : (
-        <span className="chart-footnote" style={{ marginLeft: 'auto' }}>{baroBaseText}</span>
-      )}
+      ) : null}
+
+      {/* Battery + SD pinned to the FAR RIGHT of the strip in every view */}
+      <div className="strip-item big" style={{ marginLeft: 'auto' }} title="Battery voltage">
+        <BatteryMedium color="var(--accent-green)" size={22} />
+        <span className="strip-value">{((latestData.vbat || 0) / 1000).toFixed(2)}<span className="strip-label">V</span></span>
+      </div>
+      <div className="strip-item big" title="microSD card on the board (onboard logging)">
+        <Gauge color="var(--accent-yellow)" size={22} />
+        <span className="strip-label">SD</span>
+        <span className="strip-value">{latestData.sdOk ? 'OK' : '--'}</span>
+      </div>
     </div>
   );
 
@@ -368,7 +605,11 @@ const Dashboard = () => {
       <div className="chart-head">
         <Activity color={color} size={15} />
         <h2 style={{ fontSize: '0.85rem' }}>{title}{ppgAc ? ' · AC' : ''}</h2>
-        <span className="num" style={{ marginLeft: 'auto', fontSize: '0.9rem', fontWeight: 700 }}>
+        {/* center-top: where the four PPGs sit on the ring, in line colors */}
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+          <SiteLegend posMap={PPG_POS} />
+        </div>
+        <span className="num" style={{ fontSize: '0.9rem', fontWeight: 700 }}>
           {fmtCount(latestData[ppgKey(latestKey)])}
         </span>
       </div>
@@ -377,12 +618,12 @@ const Dashboard = () => {
           <LineChart data={ppgData}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(140,220,255,0.07)" vertical={false} />
             <XAxis {...ppgAxisProps} />
-            <YAxis stroke="var(--text-dim)" fontSize={10} domain={['auto', 'auto']} width={48} />
+            <YAxis stroke="var(--text-dim)" fontSize={10} domain={acYDomain(keys)} allowDataOverflow width={48} />
             <Tooltip {...ppgTooltip} />
             {keys.map((k, idx) => (
               (latestData.ppgMask & (1 << idx)) !== 0 &&
               <Line key={k} type="monotone" dataKey={ppgKey(k)} stroke={colors[idx]}
-                    strokeWidth={2} activeDot={false}
+                    strokeWidth={1} activeDot={false}
                     dot={makeDot(idx === firstLive, (ppgYield[idx + 1] ?? 1) < SPARSE_YIELD)}
                     name={`S${idx + 1}`} isAnimationActive={false} />
             ))}
@@ -394,12 +635,12 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container${sensingIdle ? ' sensing-idle' : ''}`}>
       {/* Header Section */}
       <header className="glass-card header-card">
         <div style={{ minWidth: 0 }}>
           <h1>CPAP PI Dashboard - Full_v2</h1>
-          <p style={{ color: 'var(--text-dim)', fontSize: '0.7rem', margin: '2px 0 0 0', whiteSpace: 'nowrap' }}>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.95rem', margin: '2px 0 0 0', whiteSpace: 'nowrap' }}>
             4× PPG @ {latestData.ppgRate || 0}Hz · 4× Baro @ {latestData.baroRate || 0}Hz ·
             mask {latestData.maskPresent ? 'attached' : '—'} ·
             link {latestData.bleDecim > 1
@@ -452,20 +693,37 @@ const Dashboard = () => {
             </button>
           </div>
 
-          {/* NO DATA and CONNECT FAILED outrank LIVE: a badge that says LIVE
+          {/* CONNECT FAILED and NO DATA outrank LIVE: a badge that says LIVE
               over frozen numbers is the failure mode this replaces. */}
           <div className={`status-badge ${
             connectError ? 'status-offline'
             : statusStale ? 'status-stale'
-            : streaming ? ((isPaused && !isDemo) ? 'status-paused' : 'status-online')
-            : 'status-offline'}`}
-            title={connectError || (statusStale ? 'No STATUS frame for over 4 s — the values shown are stale' : undefined)}>
+            : streaming ? (((isPaused && !isDemo) || sensingIdle) ? 'status-paused' : 'status-online')
+            : 'status-offline'}`}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'currentColor' }} />
             {connectError ? 'CONNECT FAILED'
               : isDemo ? 'DEMO'
-              : isConnected ? (statusStale ? 'NO DATA' : (isPaused ? 'PAUSED' : 'LIVE'))
+              : isConnected ? (statusStale ? 'NO DATA'
+                              : isPaused ? 'PAUSED'
+                              : sensingIdle ? (latestData.maskPresent ? 'SENSING OFF' : 'NO MASK')
+                              : 'LIVE')
               : 'DISCONNECTED'}
           </div>
+
+          {/* Remote sensing enable ('P'). The board keeps STATUS coming while
+              sensing is off, so this is a real idle state, not a dead link. */}
+          <button className={sensingOn ? 'sensing' : 'sensing off'}
+                  disabled={!canToggleSensing}
+                  onClick={() => setSensing(!sensingOn)}
+                  title={canToggleSensing
+                    ? (sensingOn
+                        ? 'Sensing on — click to stop the sensors and save about 10 mA. STATUS keeps arriving.'
+                        : `Sensing off (${idleReason}) — click to resume. The board also resumes on its own when the mask is reattached.`)
+                    : 'Needs a BLE connection'}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Power size={16} />
+            {sensingOn ? 'Sensing' : 'Sensing Off'}
+          </button>
 
           <button className={isDemo ? 'demo active' : 'demo'} disabled={isConnected} onClick={toggleDemo}
                   style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -533,26 +791,55 @@ const Dashboard = () => {
           {/* Visualized: IDW heatmaps over the real mask flex outline with
               the real sensor footprint positions (see maskGeometry.js for
               provenance). Skin temp, humidity, pressure; PPG viz later. */}
-          <MaskHeatmap title="Skin Temperature" unit="°C"
-            stops={['#1c0a16', '#8a1f63', '#ff4db8']} fmt={(v) => (+v).toFixed(1)}
+          {/* Fixed physical scales (user spec): skin 34-41 °C, RH 30-100 %,
+              pressure 755 mmHg up to the MS5611's measurable ceiling
+              (1200 mbar = 900 mmHg). Blue = low, red = high everywhere.
+              Δ mode falls back to auto-fit around 0. */}
+          <MaskHeatmap title="Skin Temperature" unit={tmpDelta && tmpBase ? 'Δ °C' : '°C'}
+            stops={THERMAL_STOPS} domain={tmpDelta && tmpBase ? undefined : [34, 41]}
+            fmt={(v) => (+v).toFixed(1)}
+            mode={`${tmpDelta}:${streaming}:${ovSig('tmp', 3)}`}
+            footer={demoInputs('tmp', ['T1', 'T2', 'T3'])}
+            controls={vizCorner(tmpDelta, setTmpDelta, tareTmp, 'skin-temp')}
             sensors={[1, 2, 3].map(i => ({
               ...TMP_POS[i], label: `T${i}`,
-              value: latestData[`tmp${i}`],
+              value: tmpVal(i),
               live: (latestData.tmpMask & (1 << (i - 1))) !== 0,
             }))} />
-          <MaskHeatmap title="Humidity" unit="%RH"
-            stops={['#06131c', '#00647e', '#00e5ff']} fmt={(v) => (+v).toFixed(1)}
+          <MaskHeatmap title="Humidity" unit={rhDelta && rhBase ? 'Δ %RH' : '%RH'}
+            stops={THERMAL_STOPS} domain={rhDelta && rhBase ? undefined : [30, 100]}
+            fmt={(v) => (+v).toFixed(1)}
+            mode={`${rhDelta}:${streaming}:${ovSig('rh', 3)}`}
+            footer={demoInputs('rh', ['H1', 'H2', 'H3'])}
+            controls={vizCorner(rhDelta, setRhDelta, tareRh, 'humidity')}
             sensors={[1, 2, 3].map(i => ({
               ...SHT_POS[i], label: `H${i}`,
-              value: latestData[`sht${i}h`],
+              value: rhVal(i),
               live: (latestData.shtMask & (1 << (i - 1))) !== 0,
             }))} />
           <MaskHeatmap title="Contact Pressure" unit={baroUnit}
-            stops={['#1a1204', '#8a6200', '#ffc300']} fmt={(v) => (+v).toFixed(2)}
+            stops={THERMAL_STOPS} domain={baroDelta && baroBase ? undefined : [755, 900]}
+            fmt={(v) => (+v).toFixed(2)}
+            mode={`${baroDelta}:${streaming}:${ovSig('p', 4)}`}
+            footer={demoInputs('p', ['P1', 'P2', 'P3', 'P4'])}
+            controls={<div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>{baroControlGroup}</div>}
             sensors={[1, 2, 3, 4].map(i => ({
               ...BARO_POS[i], label: `P${i}`, color: SITE_COLORS[i - 1],
               value: baroLatest(i),
               live: liveBaro.includes(i - 1),
+            }))} />
+          {/* PPG signal QUALITY (IR AC-SNR). Inverted ramp: a strong clean
+              pulse is green, a site reading nothing but noise falls to red.
+              ~1 is the white-noise floor of the estimator; >5 is a solid
+              pulse, hence the 0-10 scale. */}
+          <MaskHeatmap title="PPG IR SNR" unit="SNR"
+            stops={SNR_STOPS} domain={[0, 10]} fmt={(v) => (+v).toFixed(1)}
+            mode={`snr:${streaming}:${ovSig('snr', 4)}`}
+            footer={demoInputs('snr', ['IR1', 'IR2', 'IR3', 'IR4'])}
+            sensors={[1, 2, 3, 4].map(i => ({
+              ...PPG_POS[i], label: `IR${i}`,
+              value: ov(`snr${i}`) ?? irSnr(i),
+              live: (latestData.ppgMask & (1 << (i - 1))) !== 0,
             }))} />
         </>
       ) : viewMode === 'split' ? (
@@ -561,21 +848,27 @@ const Dashboard = () => {
               site's Red/IR/Green stacked beneath it. Channel-major render
               order + fixed lanes keep columns aligned even when a site is
               offline (its lane simply stays empty). */}
+          {/* Rows are colored by CHANNEL (pressure white, Red red, IR pink,
+              Green green) — the columns already encode the site, and each
+              pressure card carries a mask-ring pin showing where that baro
+              physically sits. */}
           {liveBaro.map(b => (
             <MiniChart key={`p${b + 1}`} lane={b} title={`Pressure ${b + 1}`} dataKey={baroKey(`p${b + 1}`)}
-                       color={BARO_COLORS[b]} data={baroData} xAxis={timeAxisProps} tooltipFmt={fmtElapsed}
+                       color={CH_COLORS.p} data={baroData} xAxis={timeAxisProps} tooltipFmt={fmtElapsed}
+                       indicator={<SitePin pos={BARO_POS[b + 1]} color={CH_COLORS.p} />}
                        latest={fmt1(baroLatest(b + 1) ?? undefined)} unit={baroUnit} />
           ))}
           {[
-            ['Red', 'r', PPG_RED_COLORS],
-            ['IR', 'i', PPG_IR_COLORS],
-            ['Green', 'g', PPG_GREEN_COLORS],
-          ].map(([label, ch, colors]) =>
+            ['Red', 'r'],
+            ['IR', 'i'],
+            ['Green', 'g'],
+          ].map(([label, ch]) =>
             livePpg.map(s => (
               <MiniChart key={`${ch}${s + 1}`} lane={s}
                          title={`PPG ${s + 1} ${label}${ppgAc ? ' (AC)' : ''}`} dataKey={ppgKey(`${ch}${s + 1}`)}
-                         color={colors[s]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
+                         color={CH_COLORS[ch]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
                          dot={makeDot(true, (ppgYield[s + 1] ?? 1) < SPARSE_YIELD)}
+                         indicator={<SitePin pos={PPG_POS[s + 1]} color={CH_COLORS[ch]} />}
                          latest={fmtCount(latestData[ppgKey(`${ch}${s + 1}`)])} unit="counts" />
             ))
           )}
@@ -587,7 +880,11 @@ const Dashboard = () => {
             <div className="chart-head">
               <Gauge color="var(--accent-amber)" size={15} />
               <h2 style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>Contact Pressure ×4 <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>({baroUnit})</span></h2>
-              <span className="chart-footnote" style={{ marginLeft: 'auto' }}>{baroBaseText}</span>
+              {/* center-top: where the four baros sit on the ring, in line colors */}
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+                <SiteLegend posMap={BARO_POS} />
+              </div>
+              <span className="chart-footnote">{baroBaseText}</span>
             </div>
             <div className="chart-body">
               <ResponsiveContainer width="100%" height="100%">
@@ -599,7 +896,7 @@ const Dashboard = () => {
                   <Legend wrapperStyle={{ fontSize: 10 }} iconSize={8} height={14} />
                   {liveBaro.map((b, idx) => (
                     <Line key={b} type="monotone" dataKey={baroKey(`p${b + 1}`)} stroke={BARO_COLORS[b]}
-                          strokeWidth={2} dot={idx === 0 ? markDot : false} activeDot={false}
+                          strokeWidth={1} dot={idx === 0 ? markDot : false} activeDot={false}
                           name={`P${b + 1}`} isAnimationActive={false} />
                   ))}
                 </LineChart>
