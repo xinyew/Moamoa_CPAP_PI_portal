@@ -196,6 +196,21 @@ const Dashboard = () => {
   const [baroDelta, setBaroDelta] = useState(false);
   const [baroBase, setBaroBase] = useState(null);     // {p1..p4} at tare time
 
+  // Demo sandbox for the Visualized maps: while demo streams, any sensor
+  // can be overridden with a typed value to see exactly how the field
+  // reacts. Overrides replace the FINAL displayed value (bypassing
+  // matching/Δ — what you type is what the map shows) and clear when demo
+  // stops. Keys: tmp1..3, rh1..3, p1..4, snr1..4.
+  const [demoOv, setDemoOv] = useState({});
+  useEffect(() => { if (!isDemo) setDemoOv({}); }, [isDemo]);
+  const ov = (k) => {
+    if (!isDemo) return null;
+    const raw = demoOv[k];
+    if (raw == null || raw === '') return null;
+    const n = +raw;
+    return Number.isNaN(n) ? null : n;
+  };
+
   // Skin temp / humidity get the same ABS/Δ treatment on their heatmaps:
   // absolute values sit in a narrow band (skin ~33-34 °C), so the CHANGE
   // since a tare is what makes a developing pressure point visible.
@@ -410,6 +425,8 @@ const Dashboard = () => {
     : history;
   const baroUnit = (baroDelta && baroBase) ? 'Δ mmHg' : 'mmHg';
   const baroLatest = (i) => {
+    const o = ov(`p${i}`);
+    if (o != null) return o;
     const v = mP(i);
     if (v == null) return null;
     return (baroDelta && baroBase) ? v - (baroBase[`p${i}`] ?? 0) : v;
@@ -442,10 +459,14 @@ const Dashboard = () => {
     </div>
   );
   const tmpVal = (i) => {
+    const o = ov(`tmp${i}`);
+    if (o != null) return o;
     const v = mTmp(i);
     return (tmpDelta && tmpBase && v != null) ? +(v - (tmpBase[i] ?? 0)).toFixed(2) : v;
   };
   const rhVal = (i) => {
+    const o = ov(`rh${i}`);
+    if (o != null) return o;
     const v = mRh(i);
     return (rhDelta && rhBase && v != null) ? +(v - (rhBase[i] ?? 0)).toFixed(2) : v;
   };
@@ -470,6 +491,22 @@ const Dashboard = () => {
     const noise = Math.sqrt(d2 / (n - 1)) / Math.SQRT2;
     return +(rms / Math.max(noise, 1e-6)).toFixed(2);
   };
+
+  // Per-map demo input row: type a value per sensor, empty = live demo value.
+  const demoInputs = (prefix, labels) => (isDemo ? (
+    <div className="viz-inputs">
+      {labels.map((lb, idx) => (
+        <label key={lb}>
+          <span>{lb}</span>
+          <input type="number" step="0.1" placeholder="auto"
+                 value={demoOv[`${prefix}${idx + 1}`] ?? ''}
+                 onChange={(e) => setDemoOv(o => ({ ...o, [`${prefix}${idx + 1}`]: e.target.value }))} />
+        </label>
+      ))}
+    </div>
+  ) : null);
+  const ovSig = (prefix, n) =>
+    Array.from({ length: n }, (_, k) => demoOv[`${prefix}${k + 1}`] ?? '').join(',');
 
   // Everything between the header and the charts rides in ONE slim strip:
   // env/status telemetry plus the chart controls (PPG window, RAW/AC,
@@ -745,7 +782,8 @@ const Dashboard = () => {
           <MaskHeatmap title="Skin Temperature" unit={tmpDelta && tmpBase ? 'Δ °C' : '°C'}
             stops={THERMAL_STOPS} domain={tmpDelta && tmpBase ? undefined : [34, 41]}
             fmt={(v) => (+v).toFixed(1)}
-            mode={`${tmpDelta}:${streaming}`}
+            mode={`${tmpDelta}:${streaming}:${ovSig('tmp', 3)}`}
+            footer={demoInputs('tmp', ['T1', 'T2', 'T3'])}
             controls={vizCorner(tmpDelta, setTmpDelta, tareTmp, 'skin-temp')}
             sensors={[1, 2, 3].map(i => ({
               ...TMP_POS[i], label: `T${i}`,
@@ -755,7 +793,8 @@ const Dashboard = () => {
           <MaskHeatmap title="Humidity" unit={rhDelta && rhBase ? 'Δ %RH' : '%RH'}
             stops={THERMAL_STOPS} domain={rhDelta && rhBase ? undefined : [30, 100]}
             fmt={(v) => (+v).toFixed(1)}
-            mode={`${rhDelta}:${streaming}`}
+            mode={`${rhDelta}:${streaming}:${ovSig('rh', 3)}`}
+            footer={demoInputs('rh', ['H1', 'H2', 'H3'])}
             controls={vizCorner(rhDelta, setRhDelta, tareRh, 'humidity')}
             sensors={[1, 2, 3].map(i => ({
               ...SHT_POS[i], label: `H${i}`,
@@ -765,7 +804,8 @@ const Dashboard = () => {
           <MaskHeatmap title="Contact Pressure" unit={baroUnit}
             stops={THERMAL_STOPS} domain={baroDelta && baroBase ? undefined : [755, 900]}
             fmt={(v) => (+v).toFixed(2)}
-            mode={`${baroDelta}:${streaming}`}
+            mode={`${baroDelta}:${streaming}:${ovSig('p', 4)}`}
+            footer={demoInputs('p', ['P1', 'P2', 'P3', 'P4'])}
             controls={<div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>{baroControlGroup}</div>}
             sensors={[1, 2, 3, 4].map(i => ({
               ...BARO_POS[i], label: `P${i}`, color: SITE_COLORS[i - 1],
@@ -778,10 +818,11 @@ const Dashboard = () => {
               pulse, hence the 0-10 scale. */}
           <MaskHeatmap title="PPG IR SNR" unit="SNR"
             stops={SNR_STOPS} domain={[0, 10]} fmt={(v) => (+v).toFixed(1)}
-            mode={`snr:${streaming}`}
+            mode={`snr:${streaming}:${ovSig('snr', 4)}`}
+            footer={demoInputs('snr', ['IR1', 'IR2', 'IR3', 'IR4'])}
             sensors={[1, 2, 3, 4].map(i => ({
               ...PPG_POS[i], label: `IR${i}`,
-              value: irSnr(i),
+              value: ov(`snr${i}`) ?? irSnr(i),
               live: (latestData.ppgMask & (1 << (i - 1))) !== 0,
             }))} />
         </>

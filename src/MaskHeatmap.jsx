@@ -49,7 +49,7 @@ const idw = (cx, cy, pts) => {  // pts sorted ascending by .ang
   return prev.value + (next.value - prev.value) * (t / span);
 };
 
-const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain }) => {
+const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain, footer }) => {
   const ramp = makeRamp(stops);
   const live = sensors.filter(s => s.live && s.value != null && !isNaN(s.value))
     .map(s => ({ ...s, ang: angOf(s.x, s.y) }))
@@ -164,6 +164,7 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain 
             {(domain || live.length) ? fmt(hi) : '--'}
           </span>
         </div>
+        {footer}
       </div>
     </div>
   );

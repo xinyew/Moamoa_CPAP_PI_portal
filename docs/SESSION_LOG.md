@@ -6,6 +6,23 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 (cont. 5) — demo sandbox inputs + zone-center readings
+
+- Demo sandbox for the Visualized maps: while demo streams, each map
+  grows a per-sensor input row (T1-3 / H1-3 / P1-4 / IR1-4, empty =
+  follow the live demo value). Typed values override the FINAL displayed
+  value (bypassing matching/delta - what you type is what the map shows)
+  and clear when demo stops. Implemented as an `ov()` layer in the
+  display accessors + `footer` prop on MaskHeatmap; input strings ride
+  the memo `mode` signature so partial typing ('3.') still re-renders.
+  Verified: typing 95 into H1 turns the left arm hot (cell heat 0.63 ->
+  3.89) and the zone shows 95.0; clearing returns to the demo value.
+- Readings moved from the sensor dots to the ZONE CENTERS (name above,
+  value beneath; zones without a sensor of that kind show the name
+  alone). Sensor dots are bare gray markers now.
+
+---
+
 ## Session 2026-08-02 (cont. 4) — along-ring gradient field, SNR map, traffic-light ramp, strapless outline
 
 - Heatmap field rebuilt twice on user feedback, landing on PIECEWISE-

@@ -340,6 +340,34 @@ button.sensing.off {
   min-width: 0;
 }
 
+/* Demo sandbox inputs under each Visualized map: one small field per
+   sensor; empty = follow the live demo value */
+.viz-inputs {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.3rem;
+  flex-wrap: wrap;
+}
+.viz-inputs label {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.66rem;
+  color: var(--text-dim);
+}
+.viz-inputs input {
+  width: 3.1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glass);
+  border-radius: 0.4rem;
+  color: #e8ecf5;
+  padding: 0.14rem 0.3rem;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+.viz-inputs input:focus { outline: 1px solid var(--accent-green); }
+
 /* Small caption inline in a chart header (e.g. pressure tare baseline) */
 .chart-footnote {
   font-size: 0.68rem;
