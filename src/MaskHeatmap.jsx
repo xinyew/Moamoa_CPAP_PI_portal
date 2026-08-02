@@ -74,22 +74,29 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain,
   const clipId = `maskclip-${title.replace(/\W+/g, '')}`;
 
   return (
-    <div className="glass-card viz-card chart-card">
+    <div className="glass-card viz-card chart-card" style={{ position: 'relative' }}>
       {/* Title CENTERED and doubled. The card is too narrow for a big title
           plus corner controls on one line, so ABS/Δ (and the demo inputs)
           live on a centered second line instead of overlapping the title. */}
-      <div className="chart-head" style={{ justifyContent: 'center' }}>
-        <h2 style={{ fontSize: '1.7rem', whiteSpace: 'nowrap', textAlign: 'center' }}>
+      {/* Big centered title with the ABS/Δ toggle in the section's top-right
+          corner — in flow (not absolute), so they can never overlap: the
+          title centers in whatever width the controls leave over. */}
+      <div className="chart-head">
+        <h2 style={{ flex: 1, minWidth: 0, fontSize: '1.7rem', whiteSpace: 'nowrap',
+                     textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {title} <span style={{ color: 'var(--text-dim)', fontWeight: 400, fontSize: '1rem' }}>({unit})</span>
         </h2>
+        {(controls || live.length === 0) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '0 0 auto' }}>
+            {live.length === 0 && (
+              <span style={{ fontSize: '0.72rem', color: 'var(--accent-amber)' }}>no live sensors</span>
+            )}
+            {controls}
+          </div>
+        )}
       </div>
-      {(controls || footer || live.length === 0) && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center',
-                      gap: '0.8rem', flexWrap: 'wrap', marginBottom: '0.2rem' }}>
-          {live.length === 0 && (
-            <span style={{ fontSize: '0.72rem', color: 'var(--accent-amber)' }}>no live sensors</span>
-          )}
-          {controls}
+      {footer && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.2rem' }}>
           {footer}
         </div>
       )}
@@ -164,15 +171,15 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain,
             </g>
           ))}
         </svg>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
-          <span className="num" style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', margin: '0.4rem 0.15rem 0.1rem' }}>
+          <span className="num" style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-dim)' }}>
             {(domain || live.length) ? fmt(lo) : '--'}
           </span>
           <div style={{
-            flex: 1, height: 6, borderRadius: 3,
+            flex: 1, height: 12, borderRadius: 6,
             background: `linear-gradient(to right, ${stops[0]}, ${stops[1]}, ${stops[2]})`
           }} />
-          <span className="num" style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
+          <span className="num" style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-dim)' }}>
             {(domain || live.length) ? fmt(hi) : '--'}
           </span>
         </div>

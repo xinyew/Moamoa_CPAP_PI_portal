@@ -6,6 +6,22 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 (cont.) — colorbar 2x, corner toggles, short titles
+
+- Heatmap colorbar doubled (6 -> 12 px), end numbers up to 1rem bold,
+  margins rebalanced.
+- ABS/delta toggles moved to each map section's TOP-RIGHT corner. First
+  try was absolute positioning — overlapped the centered title on three
+  maps; landed on in-flow flex (title centers in the width the controls
+  leave over, ellipsis as the safety valve), which cannot overlap.
+- Titles: "Skin Temperature" -> "Temperature" (user), and "Contact
+  Pressure" -> "Pressure" (measured 287 px needed vs ~242 available at
+  the user's viewport — it would have ellipsized; one-word titles match
+  the rest, the unit tag keeps the meaning).
+- Note: the built APKs (PI_sensor_v2 / _phone) predate this round.
+
+---
+
 ## Session 2026-08-02 (cont. 5) — demo sandbox inputs + zone-center readings
 
 - Demo sandbox for the Visualized maps: while demo streams, each map
