@@ -1,6 +1,6 @@
 {
   "appId": "edu.gatech.kmm.pmask",
-  "appName": "KMM PMask Portal",
+  "appName": "PI sensor_v2",
   "webDir": "dist",
   "android": {
     "allowMixedContent": false

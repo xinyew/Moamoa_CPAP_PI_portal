@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">KMM PMask Portal</string>
-    <string name="title_activity_main">KMM PMask Portal</string>
+    <string name="app_name">PI sensor_v2</string>
+    <string name="title_activity_main">PI sensor_v2</string>
     <string name="package_name">edu.gatech.kmm.pmask</string>
     <string name="custom_url_scheme">edu.gatech.kmm.pmask</string>
 </resources>

@@ -6,6 +6,26 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 (cont.) — APK renames: PI sensor_v2 + phone variant
+
+- Tablet app renamed "PI sensor_v2" (strings.xml app_name/title +
+  capacitor.config appName; appId unchanged so it updates the installed
+  app). Built -> Downloads/PI_sensor_v2.apk (4.3 MB).
+- PHONE variant for a Galaxy S21, landscape: TEMPORARY edits (reverted
+  after the build, recipe here) — appId suffixed ".phone" so it installs
+  BESIDE the tablet app, app_name "PI sensor_v2_phone", MainActivity
+  android:screenOrientation="sensorLandscape". Built ->
+  Downloads/PI_sensor_v2_phone.apk (4.0 MB). Landscape phone height sits
+  under the layout's 540 px floor, so the one-screen grid scrolls
+  vertically there — acceptable for now; a phone-height compaction pass
+  is future work if it bothers.
+- Both APKs' package ids verified from the built manifests
+  (edu.gatech.kmm.pmask / .phone). On-device checks pending as usual.
+- If the phone variant becomes a regular deliverable, promote the
+  temporary edits to a gradle product flavor instead of re-editing.
+
+---
+
 ## Session 2026-08-02 — full rev2 UI ported to the tablet; APK built
 
 All of rev2-enhancement through 5710df1 carried onto `android-tablet-app`
