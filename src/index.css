@@ -505,3 +505,58 @@ h1 {
   -webkit-text-fill-color: transparent;
   white-space: nowrap;
 }
+
+/* ============================================================
+   PHONE LANDSCAPE (e.g. Galaxy S21: ~915x412 css px).
+   The tablet layout assumes >=540px of height; on a phone that
+   forced a clumsy scroll of a half-scaled desktop. Ratios are
+   recomputed for a ~390px working height instead:
+   - Overlay keeps 2x2 and fits ONE screen (charts ~140px tall).
+   - Split and Visualized switch to 2-across cards with a fixed
+     card height and allow vertical scrolling — 16 readable
+     charts beat 16 unreadable ones on one screen.
+   - Header + strip collapse to slim single rows; the subtitle,
+     Air sub-line and site pins go — no room to spend on garnish.
+   ============================================================ */
+@media (max-height: 500px) and (orientation: landscape) {
+  #root { padding: 0.3rem 0.45rem; }
+  .dashboard-container {
+    min-height: 0;
+    gap: 0.35rem;
+  }
+  /* Split/Viz scroll instead of crushing rows into slivers */
+  .dashboard-container.scrolling {
+    height: auto;
+    min-height: 100%;
+  }
+  .dashboard-container.scrolling .mini-card { height: 150px; }
+  .dashboard-container.scrolling .viz-card { height: 300px; }
+  .mini-card { grid-column: span 6; }   /* 2-across */
+  .viz-card  { grid-column: span 6; }   /* 2x2 maps */
+
+  /* slim header */
+  .header-card { padding: 0.3rem 0.6rem; gap: 0.4rem; }
+  h1 { font-size: 0.95rem; }
+  .header-card p { display: none; }
+  .header-card button { padding: 0.22rem 0.45rem; font-size: 0.72rem; }
+  .header-card .segmented.vertical { flex-direction: row; }
+  .status-badge { padding: 0.2rem 0.5rem; font-size: 0.68rem; }
+  .filter-group { padding: 0.25rem 0.45rem; gap: 0.2rem; }
+
+  /* slim strip */
+  .strip-card { padding: 0.25rem 0.6rem 0.35rem; gap: 0.6rem; }
+  .strip-item.big .strip-value { font-size: 0.95rem; }
+  .strip-item.big .strip-label { font-size: 0.8rem; }
+  .strip-item.big svg { width: 16px; height: 16px; }
+  .strip-sub { display: none; }
+  .strip-card .toolbar-label { font-size: 0.7rem; }
+  .strip-card .segment { font-size: 0.7rem; padding: 0.18rem 0.4rem; }
+  .strip-card .offline-note { font-size: 0.68rem; }
+
+  /* chart chrome tuned down */
+  .chart-head h2 { font-size: 0.8rem !important; }
+  .chart-head svg { height: 2.2em !important; }   /* site pins/legends */
+  .viz-card .chart-head h2 { font-size: 1.05rem !important; }
+  .viz-inputs label { font-size: 0.72rem; }
+  .viz-inputs input { width: 3rem; font-size: 0.8rem; padding: 0.15rem 0.25rem; }
+}

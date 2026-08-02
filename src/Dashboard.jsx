@@ -631,7 +631,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className={`dashboard-container${sensingIdle ? ' sensing-idle' : ''}`}>
+    <div className={`dashboard-container${sensingIdle ? ' sensing-idle' : ''}${viewMode !== 'overlay' ? ' scrolling' : ''}`}>
       {/* Header Section */}
       <header className="glass-card header-card">
         <div style={{ minWidth: 0 }}>

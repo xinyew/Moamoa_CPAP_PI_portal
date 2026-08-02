@@ -6,6 +6,23 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 (cont.) — phone-landscape layout (S21)
+
+The phone APK was a half-scaled desktop; ratios recomputed for a ~390px
+working height via `@media (max-height:500px) and (orientation:
+landscape)` — desktop/tablet untouched:
+- Overlay keeps 2x2 and fits ONE screen (charts ~137px measured).
+- Split -> 2-across, 150px cards; Visualized -> 2x2, 300px maps; both
+  views scroll vertically (`.dashboard-container.scrolling`, class set
+  by Dashboard when viewMode != overlay; only has effect inside the
+  media query). 16 readable charts beat 16 slivers.
+- Header/strip collapse: subtitle + Air sub-line hidden, slim buttons,
+  RTT stack goes horizontal, pins/legends 2.2em, sandbox inputs shrink.
+Verified at 915x412 (S21 css-px viewport): overlay no-scroll 137px
+charts, split 2-col scrolling, viz 2x2 321px maps, no h-overflow.
+
+---
+
 ## Session 2026-08-02 (cont.) — colorbar 2x, corner toggles, short titles
 
 - Heatmap colorbar doubled (6 -> 12 px), end numbers up to 1rem bold,
