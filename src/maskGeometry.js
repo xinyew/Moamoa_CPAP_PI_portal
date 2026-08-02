@@ -122,27 +122,35 @@ export const PPG_POS = {    // MAX30101, for the future PPG visualization
 // sensor lands in its anatomically sensible zone:
 //   A: p1 (75,67)          B: p2, sht1, tmp1      C: p4, sht3, tmp3
 //   D: p3, sht2, tmp2
+// Per the user's mockup the dividers are SPOKES radiating from the ring
+// hub, and the letters sit inside the central cutout near their zone.
+const HUB = { x: 75, y: 110 };
 export const REGIONS = [
-  { id: 'A', name: 'Nasal bridge', label: { x: 75, y: 58 } },
-  { id: 'B', name: 'Left',         label: { x: 35.5, y: 119 } },
-  { id: 'C', name: 'Right',        label: { x: 114.5, y: 119 } },
-  { id: 'D', name: 'Chin',         label: { x: 83, y: 145.5 } },
+  { id: 'A', name: 'Nasal bridge', label: { x: 75, y: 91 } },
+  { id: 'B', name: 'Left',         label: { x: 56, y: 108 } },
+  { id: 'C', name: 'Right',        label: { x: 94, y: 108 } },
+  { id: 'D', name: 'Chin',         label: { x: 75, y: 128 } },
+];
+
+// Spoke endpoints (outside the outline; the ring clip trims them).
+// Angles from the hub, y-down: A|B -111.6°, A|C -68.4°, B|D 145.4°,
+// C|D 34.6°. Every sensor verified to stay in its sensible zone:
+//   A: p1, ppg1   B: p2, sht1, tmp1, ppg2   C: p4, sht3, tmp3, ppg4
+//   D: p3, sht2, tmp2, ppg3
+export const REGION_DIVIDERS = [
+  [[HUB.x, HUB.y], [56, 62]],    // A | B
+  [[HUB.x, HUB.y], [94, 62]],    // A | C
+  [[HUB.x, HUB.y], [30, 141]],   // B | D
+  [[HUB.x, HUB.y], [120, 141]],  // C | D
 ];
 
 export const regionOf = (x, y) => {
-  if (y < 84 && x >= 64 && x <= 86) return 'A'; // strap + tab + apex
-  if (y > 135) return 'D';                      // bottom arc
-  return x < 75 ? 'B' : 'C';                    // the two arms
+  const a = Math.atan2(y - HUB.y, x - HUB.x) * 180 / Math.PI; // y-down
+  if (a >= -111.6 && a <= -68.4) return 'A';
+  if (a > -68.4 && a < 34.6) return 'C';
+  if (a >= 34.6 && a <= 145.4) return 'D';
+  return 'B';
 };
-
-// Boundary segments between regions; drawn clipped to the ring, so the
-// parts crossing the central cutout simply vanish.
-export const REGION_DIVIDERS = [
-  [[64, 38.5], [64, 84]],     // A | B
-  [[86, 38.5], [86, 84]],     // A | C
-  [[64, 84], [86, 84]],       // A underside (mostly inside the cutout)
-  [[28.5, 135], [121.5, 135]], // B|D and C|D across both arms
-];
 
 // ---- heatmap grid: cell centers on the ring, precomputed once ----
 

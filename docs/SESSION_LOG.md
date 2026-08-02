@@ -6,6 +6,61 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 (cont. 2) — sensor matching, radial zones, legends
+
+Rapid-fire user feedback round on `rev2-enhancement` (5172, HMR):
+
+1. SENSOR MATCHING (display-only, CSV stays raw): units have no factory
+   calibration, so constant sensor-to-sensor bias is removed by showing
+   groupMean(baselines) + (value − ownBaseline) for p1-4 / tmp1-3 /
+   sht h 1-3 / sht t 1-3. Baselines = per-sensor mean over 6 samples ×
+   500 ms (~3 s) right after streaming starts; offsets cleared on
+   disconnect and recaptured per session. 0 skipped as the no-data
+   sentinel; sensors offline at capture keep offset 0. Demo verify:
+   RH 45.2/44.9/45.6 → 45.2/45.2/45.2, skin 33.2/33.8/34.1 →
+   33.7/33.7/33.7 (the group means). Charts (baroData), heatmaps, strip
+   and all tares run on matched values.
+2. Region dividers redrawn as SPOKES from the hub (75,110) per the
+   user's second mockup, letters moved INSIDE the central cutout
+   (A 75,91 / B 56,108 / C 94,108 / D 75,128); regionOf() now
+   angle-based. All 14 sensors re-verified into sensible zones.
+3. Tare buttons REMOVED everywhere — pressing Δ re-baselines at the
+   current (matched) readings every time; ABS⇄Δ is the whole workflow.
+4. Overlay charts: SiteLegend at the head center — the ring with all 4
+   sensors of that kind as numbered dots in SITE_COLORS (BARO_POS for
+   pressure, PPG_POS for the three PPG charts).
+5. Strip: labels unified to the value size (1.7rem), icons 30; Air stays
+   small under RH. In Visualized the RH/Skin readouts drop out (maps
+   carry them); battery + SD stay. Header was doubled then reduced to
+   2/3 on request (h1 1.4rem, subtitle 0.95rem).
+6. Fix in passing: useRef missing from the React import crashed the
+   page (ReferenceError) — caught live, fixed; vizCorner call sites
+   updated when its signature lost the base/tare args.
+
+Verified in demo: matching converges (values above), 0 Tare buttons,
+8 overlay legends, 4 region letters w/ names, viz strip = battery+SD
+only, no horizontal overflow, build clean.
+
+Late-round follow-ups (same session):
+- Strip type reduced to 2/3 (values/labels 1.15rem, icons 22); RH's main
+  line now sits on the shared baseline — the Air sub-line hangs BELOW the
+  row flow (absolute, strip reserves bottom padding), fixing the RH cell
+  riding higher than its neighbors.
+- Battery + SD moved to the FAR RIGHT of the strip (marginLeft auto on
+  battery; offline-note gives up its auto margin inside the strip).
+- Header doubled then settled at 2/3 (h1 1.4rem, subtitle 0.95rem).
+- Overlay AC fit: recharts auto y-domain was hostage to the AC baseline's
+  settling transient (slow EMA starts at the first raw sample, so the
+  first seconds hold huge decaying values that flattened the real pulse).
+  acYDomain() fits the 5th-95th percentile of the visible window (+25%
+  pad, allowDataOverflow) in AC mode only. Axis tick fonts were doubled
+  on request and then reverted to original on a follow-up request —
+  only the AC domain fix remains.
+- Verified: battery/SD flush right, AC y-ticks track the signal band,
+  no overflow, build clean.
+
+---
+
 ## Session 2026-08-02 (cont.) — strip consistency + site pins everywhere
 
 Follow-up user feedback, same branch (5172, HMR live):

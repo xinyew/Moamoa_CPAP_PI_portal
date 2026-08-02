@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -41,6 +41,27 @@ const SitePin = ({ pos }) => {
       <path d={MASK_PATH_D} fillRule="evenodd" fill="rgba(255,255,255,0.07)"
             stroke="rgba(160,220,255,0.6)" strokeWidth="1.2" />
       <circle cx={pos.x} cy={pos.y} r="6" fill="#ffe14d" stroke="#05050a" strokeWidth="1.6" />
+    </svg>
+  );
+};
+
+// Overlay-chart legend: the ring with ALL four sensors of that kind, each
+// dot in its site color and numbered — maps line colors to face positions.
+const SiteLegend = ({ posMap }) => {
+  const { x, y, w, h } = MASK_VIEWBOX;
+  return (
+    <svg viewBox={`${x} ${y} ${w} ${h}`} preserveAspectRatio="xMidYMid meet"
+         style={{ height: '4em', width: 'auto', flex: '0 0 auto', opacity: 0.95 }}>
+      <path d={MASK_PATH_D} fillRule="evenodd" fill="rgba(255,255,255,0.07)"
+            stroke="rgba(160,220,255,0.6)" strokeWidth="1.2" />
+      {[1, 2, 3, 4].map(i => posMap[i] && (
+        <g key={i}>
+          <circle cx={posMap[i].x} cy={posMap[i].y} r="7.5"
+                  fill={SITE_COLORS[i - 1]} stroke="#05050a" strokeWidth="1.6" />
+          <text x={posMap[i].x} y={posMap[i].y + 3.4} textAnchor="middle"
+                fontSize="10" fontWeight="800" fill="#05050a">{i}</text>
+        </g>
+      ))}
     </svg>
   );
 };
@@ -165,10 +186,6 @@ const Dashboard = () => {
   const [baroDelta, setBaroDelta] = useState(false);
   const [baroBase, setBaroBase] = useState(null);     // {p1..p4} at tare time
 
-  const tareBaro = () => setBaroBase({
-    p1: latestData.p1, p2: latestData.p2, p3: latestData.p3, p4: latestData.p4,
-  });
-
   // Skin temp / humidity get the same ABS/Δ treatment on their heatmaps:
   // absolute values sit in a narrow band (skin ~33-34 °C), so the CHANGE
   // since a tare is what makes a developing pressure point visible.
@@ -176,8 +193,63 @@ const Dashboard = () => {
   const [tmpBase, setTmpBase] = useState(null);       // {1..3} at tare time
   const [rhDelta, setRhDelta] = useState(false);
   const [rhBase, setRhBase] = useState(null);         // {1..3} at tare time
-  const tareTmp = () => setTmpBase({ 1: latestData.tmp1, 2: latestData.tmp2, 3: latestData.tmp3 });
-  const tareRh = () => setRhBase({ 1: latestData.sht1h, 2: latestData.sht2h, 3: latestData.sht3h });
+
+  // ---- sensor matching (units have no factory calibration) ----
+  // The sensors of a kind can't be absolutely calibrated, so the constant
+  // sensor-to-sensor bias is removed by re-referencing everything to the
+  // group: shortly after a stream starts, ~3 s of readings are averaged per
+  // sensor, and from then on each sensor displays
+  //     groupMean(baselines) + (value − itsOwnBaseline)
+  // i.e. every sensor's CHANGE rides on the shared mean. Relative dynamics
+  // are untouched; only the fixed offsets collapse. CSV recording stays RAW.
+  const [matchOff, setMatchOff] = useState(null); // {p:{1..4}, tmp:{1..3}, rh:{1..3}, air:{1..3}}
+  const latestRef = useRef(latestData);
+  latestRef.current = latestData;
+  useEffect(() => {
+    // (isConnected || isDemo) inline: `streaming` is declared further down
+    if (!(isConnected || isDemo)) { setMatchOff(null); return; }
+    const samples = [];
+    const iv = setInterval(() => {
+      const d = latestRef.current;
+      samples.push({
+        p: [1, 2, 3, 4].map(i => d[`p${i}`]),
+        tmp: [1, 2, 3].map(i => d[`tmp${i}`]),
+        rh: [1, 2, 3].map(i => d[`sht${i}h`]),
+        air: [1, 2, 3].map(i => d[`sht${i}t`]),
+      });
+      if (samples.length < 6) return;
+      clearInterval(iv);
+      const offs = {};
+      for (const [g, n] of [['p', 4], ['tmp', 3], ['rh', 3], ['air', 3]]) {
+        const means = [];
+        for (let k = 0; k < n; k++) {
+          // 0 doubles as the firmware's no-data sentinel for these fields
+          const vals = samples.map(s => s[g][k]).filter(v => v != null && !Number.isNaN(v) && v !== 0);
+          means.push(vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null);
+        }
+        const live = means.filter(m => m != null);
+        const gm = live.length ? live.reduce((a, b) => a + b, 0) / live.length : 0;
+        offs[g] = {};
+        for (let k = 0; k < n; k++) offs[g][k + 1] = means[k] == null ? 0 : means[k] - gm;
+      }
+      setMatchOff(offs);
+    }, 500);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, isDemo]);
+
+  const mOff = (g, i) => (matchOff && matchOff[g] ? matchOff[g][i] || 0 : 0);
+  const mP = (i) => { const v = latestData[`p${i}`]; return v == null ? v : +(v - mOff('p', i)).toFixed(2); };
+  const mTmp = (i) => { const v = latestData[`tmp${i}`]; return v == null ? v : +(v - mOff('tmp', i)).toFixed(2); };
+  const mRh = (i) => { const v = latestData[`sht${i}h`]; return v == null ? v : +(v - mOff('rh', i)).toFixed(2); };
+  const mAir = (i) => { const v = latestData[`sht${i}t`]; return v == null ? v : +(v - mOff('air', i)).toFixed(2); };
+
+  // Tares capture the MATCHED values, so Δ is measured on the same scale
+  // that is displayed. (No Tare button anymore — pressing Δ re-tares at the
+  // current readings every time; ABS⇄Δ is the whole workflow.)
+  const tareBaro = () => setBaroBase({ p1: mP(1), p2: mP(2), p3: mP(3), p4: mP(4) });
+  const tareTmp = () => setTmpBase({ 1: mTmp(1), 2: mTmp(2), 3: mTmp(3) });
+  const tareRh = () => setRhBase({ 1: mRh(1), 2: mRh(2), 3: mRh(3) });
 
   // Keyboard shortcut: press M to drop an event marker (ignored in inputs)
   useEffect(() => {
@@ -263,6 +335,26 @@ const Dashboard = () => {
   // AC mode swaps PPG channels to their baseline-removed (…Ac) counterparts
   const ppgKey = (k) => (ppgAc ? `${k}Ac` : k);
 
+  // Overlay AC y-domain: recharts' plain auto-fit is hostage to the AC
+  // baseline's settling transient — the slow EMA starts at the first raw
+  // sample, so the first seconds hold huge decaying values that stretch the
+  // axis until the actual pulse is a flat line. Fit to the 5th-95th
+  // percentile of the visible window instead (plus headroom) and let the
+  // transient clip off-scale.
+  const acYDomain = (keys) => {
+    if (!ppgAc) return ['auto', 'auto'];
+    const vals = [];
+    for (const d of ppgData) {
+      for (const k of keys) { const v = d[`${k}Ac`]; if (v != null) vals.push(v); }
+    }
+    if (vals.length < 20) return ['auto', 'auto'];
+    vals.sort((a, b) => a - b);
+    const q = (p) => vals[Math.floor(p * (vals.length - 1))];
+    const lo = q(0.05), hi = q(0.95);
+    const pad = Math.max((hi - lo) * 0.25, 1);
+    return [Math.floor(lo - pad), Math.ceil(hi + pad)];
+  };
+
   // Per-site delivery rate over the visible window, computed for ALL four
   // sites before deciding what to draw.
   const SPARSE_YIELD = 0.6;
@@ -291,61 +383,60 @@ const Dashboard = () => {
   // Pressure in Δ mode: subtract the tare so the contact increment is readable
   // against the ~730 mmHg absolute baseline.
   const baroKey = (b) => (baroDelta && baroBase ? `d${b}` : b);
-  const baroData = (baroDelta && baroBase)
+  // Chart data: sensor-matched always, Δ-shifted on top when enabled.
+  const baroData = (matchOff || (baroDelta && baroBase))
     ? history.map(d => {
         const o = { ...d };
         for (let i = 1; i <= 4; i++) {
-          o[`dp${i}`] = d[`p${i}`] == null ? null : +(d[`p${i}`] - (baroBase[`p${i}`] ?? 0)).toFixed(2);
+          const v = d[`p${i}`];
+          const m = v == null ? null : +(v - mOff('p', i)).toFixed(2);
+          o[`p${i}`] = m;
+          if (baroDelta && baroBase) {
+            o[`dp${i}`] = m == null ? null : +(m - (baroBase[`p${i}`] ?? 0)).toFixed(2);
+          }
         }
         return o;
       })
     : history;
   const baroUnit = (baroDelta && baroBase) ? 'Δ mmHg' : 'mmHg';
   const baroLatest = (i) => {
-    const v = latestData[`p${i}`];
+    const v = mP(i);
     if (v == null) return null;
     return (baroDelta && baroBase) ? v - (baroBase[`p${i}`] ?? 0) : v;
   };
   const baroBaseText = (baroDelta && baroBase)
     ? `Baseline   P1 ${fmt2(baroBase.p1)}  /  P2 ${fmt2(baroBase.p2)}  /  P3 ${fmt2(baroBase.p3)}  /  P4 ${fmt2(baroBase.p4)}   mmHg`
-    : 'Absolute pressure — press Δ to tare at the current reading';
+    : 'Absolute pressure — press Δ to re-baseline at the current reading';
 
-  // ABS/Δ + Tare, shared by both views so the controls never disappear
+  // ABS/Δ — no separate Tare button: pressing Δ re-baselines at the current
+  // readings every time, so ABS⇄Δ is the whole workflow.
   const baroControlGroup = (
-    <>
-      <div className="segmented">
-        <button className={`segment ${!baroDelta ? 'active' : ''}`} onClick={() => setBaroDelta(false)}
-                title="Absolute pressure (about 730 mmHg here, set by elevation)">ABS</button>
-        <button className={`segment ${baroDelta ? 'active' : ''}`}
-                onClick={() => { if (!baroBase) tareBaro(); setBaroDelta(true); }}
-                title="Show change from the baseline, so contact pressure (tens of mmHg) is not buried in the atmospheric offset">Δ</button>
-      </div>
-      <button className="mark" disabled={!streaming} onClick={tareBaro}
-              title="Set the current reading as the new baseline">Tare</button>
-    </>
+    <div className="segmented">
+      <button className={`segment ${!baroDelta ? 'active' : ''}`} onClick={() => setBaroDelta(false)}
+              title="Absolute pressure (about 730 mmHg here, set by elevation)">ABS</button>
+      <button className={`segment ${baroDelta ? 'active' : ''}`}
+              onClick={() => { tareBaro(); setBaroDelta(true); }}
+              title="Change from this moment — contact pressure (tens of mmHg) is not buried in the atmospheric offset. Pressing Δ again re-baselines.">Δ</button>
+    </div>
   );
 
-  // Corner controls for the Visualized maps — same ABS/Δ + Tare pattern as
-  // pressure, one independent instance per quantity.
-  const vizCorner = (isDelta, setDelta, base, doTare, what) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-      <div className="segmented">
-        <button className={`segment ${!isDelta ? 'active' : ''}`} onClick={() => setDelta(false)}
-                title="Absolute values">ABS</button>
-        <button className={`segment ${isDelta ? 'active' : ''}`}
-                onClick={() => { if (!base) doTare(); setDelta(true); }}
-                title={`Change since the tare baseline — small ${what} shifts stand out`}>Δ</button>
-      </div>
-      <button className="mark" disabled={!streaming} onClick={doTare}
-              title="Set the current readings as the new baseline">Tare</button>
+  // Corner controls for the Visualized maps — same ABS/Δ pattern, one
+  // independent instance per quantity.
+  const vizCorner = (isDelta, setDelta, doTare, what) => (
+    <div className="segmented">
+      <button className={`segment ${!isDelta ? 'active' : ''}`} onClick={() => setDelta(false)}
+              title="Absolute values">ABS</button>
+      <button className={`segment ${isDelta ? 'active' : ''}`}
+              onClick={() => { doTare(); setDelta(true); }}
+              title={`Change from this moment — small ${what} shifts stand out. Pressing Δ again re-baselines.`}>Δ</button>
     </div>
   );
   const tmpVal = (i) => {
-    const v = latestData[`tmp${i}`];
+    const v = mTmp(i);
     return (tmpDelta && tmpBase && v != null) ? +(v - (tmpBase[i] ?? 0)).toFixed(2) : v;
   };
   const rhVal = (i) => {
-    const v = latestData[`sht${i}h`];
+    const v = mRh(i);
     return (rhDelta && rhBase && v != null) ? +(v - (rhBase[i] ?? 0)).toFixed(2) : v;
   };
 
@@ -354,34 +445,31 @@ const Dashboard = () => {
   // pressure ABS/Δ + Tare) and the sensor-fault note.
   const stripRow = (
     <div className="glass-card strip-card">
-      {/* Telemetry readouts: doubled type so they read from across the room.
-          The SHT40's own air temp rides quietly under RH — same chip, and it
-          is context rather than a primary reading. */}
-      <div className="strip-item big" title="SHT40 relative humidity, sensors 1/2/3 (small line: SHT40 air temperature)">
-        <Droplets color="var(--accent-blue)" size={20} />
-        <div className="strip-col">
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
-            <span className="strip-label">RH%</span>
-            <span className="strip-value">{fmt1(latestData.sht1h)}/{fmt1(latestData.sht2h)}/{fmt1(latestData.sht3h)}</span>
+      {/* Telemetry readouts: one LARGE type size for labels, icons and
+          values alike. All sensor numbers are displayed sensor-matched
+          (group mean + own change). The SHT40's own air temp rides small
+          under RH — context, not a primary reading. In the Visualized view
+          the RH/skin readouts drop out (the maps carry them); battery and
+          SD have no map, so they stay. */}
+      {viewMode !== 'viz' && (
+        <>
+          <div className="strip-item big" title="SHT40 relative humidity, sensors 1/2/3, sensor-matched (small line: SHT40 air temperature)">
+            <Droplets color="var(--accent-blue)" size={22} />
+            <div className="strip-col">
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
+                <span className="strip-label">RH%</span>
+                <span className="strip-value">{fmt1(mRh(1))}/{fmt1(mRh(2))}/{fmt1(mRh(3))}</span>
+              </div>
+              <span className="strip-sub">Air {fmt1(mAir(1))}/{fmt1(mAir(2))}/{fmt1(mAir(3))} °C</span>
+            </div>
           </div>
-          <span className="strip-sub">Air {fmt1(latestData.sht1t)}/{fmt1(latestData.sht2t)}/{fmt1(latestData.sht3t)} °C</span>
-        </div>
-      </div>
-      <div className="strip-item big" title="TMP117 skin temperature, sensors 1/2/3">
-        <Thermometer color="var(--accent-amber)" size={20} />
-        <span className="strip-label">Skin°C</span>
-        <span className="strip-value">{fmt1(latestData.tmp1)}/{fmt1(latestData.tmp2)}/{fmt1(latestData.tmp3)}</span>
-      </div>
-      <div className="strip-item big" title="Battery voltage">
-        <BatteryMedium color="var(--accent-green)" size={20} />
-        <span className="strip-value">{((latestData.vbat || 0) / 1000).toFixed(2)}<span className="strip-label">V</span></span>
-      </div>
-      <div className="strip-item big" title="microSD card on the board (onboard logging)">
-        <Gauge color="var(--accent-yellow)" size={20} />
-        <span className="strip-label">SD</span>
-        <span className="strip-value">{latestData.sdOk ? 'OK' : '--'}</span>
-      </div>
-
+          <div className="strip-item big" title="TMP117 skin temperature, sensors 1/2/3, sensor-matched">
+            <Thermometer color="var(--accent-amber)" size={22} />
+            <span className="strip-label">Skin°C</span>
+            <span className="strip-value">{fmt1(mTmp(1))}/{fmt1(mTmp(2))}/{fmt1(mTmp(3))}</span>
+          </div>
+        </>
+      )}
       {/* Chart controls only where charts exist: the Visualized view has no
           time series (Window / RAW-AC are meaningless there) and pressure
           ABS/Δ now lives on the pressure map itself. */}
@@ -424,6 +512,17 @@ const Dashboard = () => {
           ].filter(Boolean).join('  |  ')}
         </span>
       ) : null}
+
+      {/* Battery + SD pinned to the FAR RIGHT of the strip in every view */}
+      <div className="strip-item big" style={{ marginLeft: 'auto' }} title="Battery voltage">
+        <BatteryMedium color="var(--accent-green)" size={22} />
+        <span className="strip-value">{((latestData.vbat || 0) / 1000).toFixed(2)}<span className="strip-label">V</span></span>
+      </div>
+      <div className="strip-item big" title="microSD card on the board (onboard logging)">
+        <Gauge color="var(--accent-yellow)" size={22} />
+        <span className="strip-label">SD</span>
+        <span className="strip-value">{latestData.sdOk ? 'OK' : '--'}</span>
+      </div>
     </div>
   );
 
@@ -434,7 +533,11 @@ const Dashboard = () => {
       <div className="chart-head">
         <Activity color={color} size={15} />
         <h2 style={{ fontSize: '0.85rem' }}>{title}{ppgAc ? ' · AC' : ''}</h2>
-        <span className="num" style={{ marginLeft: 'auto', fontSize: '0.9rem', fontWeight: 700 }}>
+        {/* center-top: where the four PPGs sit on the ring, in line colors */}
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+          <SiteLegend posMap={PPG_POS} />
+        </div>
+        <span className="num" style={{ fontSize: '0.9rem', fontWeight: 700 }}>
           {fmtCount(latestData[ppgKey(latestKey)])}
         </span>
       </div>
@@ -443,7 +546,7 @@ const Dashboard = () => {
           <LineChart data={ppgData}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(140,220,255,0.07)" vertical={false} />
             <XAxis {...ppgAxisProps} />
-            <YAxis stroke="var(--text-dim)" fontSize={10} domain={['auto', 'auto']} width={48} />
+            <YAxis stroke="var(--text-dim)" fontSize={10} domain={acYDomain(keys)} allowDataOverflow width={48} />
             <Tooltip {...ppgTooltip} />
             {keys.map((k, idx) => (
               (latestData.ppgMask & (1 << idx)) !== 0 &&
@@ -465,7 +568,7 @@ const Dashboard = () => {
       <header className="glass-card header-card">
         <div style={{ minWidth: 0 }}>
           <h1>CPAP PI Dashboard - Full_v2</h1>
-          <p style={{ color: 'var(--text-dim)', fontSize: '0.7rem', margin: '2px 0 0 0', whiteSpace: 'nowrap' }}>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.95rem', margin: '2px 0 0 0', whiteSpace: 'nowrap' }}>
             4× PPG @ {latestData.ppgRate || 0}Hz · 4× Baro @ {latestData.baroRate || 0}Hz ·
             mask {latestData.maskPresent ? 'attached' : '—'} ·
             link {latestData.bleDecim > 1
@@ -607,7 +710,7 @@ const Dashboard = () => {
           <MaskHeatmap title="Skin Temperature" unit={tmpDelta && tmpBase ? 'Δ °C' : '°C'}
             stops={['#1c0a16', '#8a1f63', '#ff4db8']} fmt={(v) => (+v).toFixed(1)}
             mode={`${tmpDelta}:${streaming}`}
-            controls={vizCorner(tmpDelta, setTmpDelta, tmpBase, tareTmp, 'skin-temp')}
+            controls={vizCorner(tmpDelta, setTmpDelta, tareTmp, 'skin-temp')}
             sensors={[1, 2, 3].map(i => ({
               ...TMP_POS[i], label: `T${i}`,
               value: tmpVal(i),
@@ -616,7 +719,7 @@ const Dashboard = () => {
           <MaskHeatmap title="Humidity" unit={rhDelta && rhBase ? 'Δ %RH' : '%RH'}
             stops={['#06131c', '#00647e', '#00e5ff']} fmt={(v) => (+v).toFixed(1)}
             mode={`${rhDelta}:${streaming}`}
-            controls={vizCorner(rhDelta, setRhDelta, rhBase, tareRh, 'humidity')}
+            controls={vizCorner(rhDelta, setRhDelta, tareRh, 'humidity')}
             sensors={[1, 2, 3].map(i => ({
               ...SHT_POS[i], label: `H${i}`,
               value: rhVal(i),
@@ -670,7 +773,11 @@ const Dashboard = () => {
             <div className="chart-head">
               <Gauge color="var(--accent-amber)" size={15} />
               <h2 style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>Contact Pressure ×4 <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>({baroUnit})</span></h2>
-              <span className="chart-footnote" style={{ marginLeft: 'auto' }}>{baroBaseText}</span>
+              {/* center-top: where the four baros sit on the ring, in line colors */}
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+                <SiteLegend posMap={BARO_POS} />
+              </div>
+              <span className="chart-footnote">{baroBaseText}</span>
             </div>
             <div className="chart-body">
               <ResponsiveContainer width="100%" height="100%">
