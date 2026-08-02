@@ -34,7 +34,11 @@ const CH_COLORS = { p: '#f2f5ff', r: '#ff5252', i: '#ff4db8', g: '#2ee880' };
 // One thermal ramp for every heatmap: coldest = blue, hottest = red, with
 // a fixed PHYSICAL domain per quantity so color always means the same
 // value (skin 34-41 °C, RH 30-100 %, pressure 755-900 mmHg).
-const THERMAL_STOPS = ['#2563eb', '#facc15', '#ef4444'];
+// Traffic-light ramp: green = safe, yellow = caution, PURE red = alarm.
+const THERMAL_STOPS = ['#22c55e', '#facc15', '#ff0000'];
+// Inverted ramp for QUALITY metrics (PPG SNR): high is good/green, zero is
+// the alarming end.
+const SNR_STOPS = ['#ff0000', '#facc15', '#22c55e'];
 
 // Tiny mask-ring locator: shows WHERE on the flex a sensor physically sits
 // (same outline + coordinates as the Visualized view). The dot takes the
@@ -446,6 +450,27 @@ const Dashboard = () => {
     return (rhDelta && rhBase && v != null) ? +(v - (rhBase[i] ?? 0)).toFixed(2) : v;
   };
 
+  // PPG IR signal quality per site: RMS of the AC (pulsatile) component over
+  // the buffer, against a noise estimate from the first difference — the
+  // pulse (1-3 Hz) barely contributes to sample-to-sample steps at 100 Hz,
+  // while broadband noise dominates them. Clean pulse ⇒ big ratio; sensor
+  // seeing nothing but noise ⇒ ratio near white-noise floor (~1).
+  const irSnr = (site) => {
+    const key = `i${site}Ac`;
+    const vals = [];
+    for (const d of history) { const v = d[key]; if (v != null) vals.push(v); }
+    const n = vals.length;
+    if (n < 50) return null;
+    let s2 = 0, d2 = 0;
+    for (let k = 0; k < n; k++) {
+      s2 += vals[k] * vals[k];
+      if (k > 0) { const dd = vals[k] - vals[k - 1]; d2 += dd * dd; }
+    }
+    const rms = Math.sqrt(s2 / n);
+    const noise = Math.sqrt(d2 / (n - 1)) / Math.SQRT2;
+    return +(rms / Math.max(noise, 1e-6)).toFixed(2);
+  };
+
   // Everything between the header and the charts rides in ONE slim strip:
   // env/status telemetry plus the chart controls (PPG window, RAW/AC,
   // pressure ABS/Δ + Tare) and the sensor-fault note.
@@ -746,6 +771,18 @@ const Dashboard = () => {
               ...BARO_POS[i], label: `P${i}`, color: SITE_COLORS[i - 1],
               value: baroLatest(i),
               live: liveBaro.includes(i - 1),
+            }))} />
+          {/* PPG signal QUALITY (IR AC-SNR). Inverted ramp: a strong clean
+              pulse is green, a site reading nothing but noise falls to red.
+              ~1 is the white-noise floor of the estimator; >5 is a solid
+              pulse, hence the 0-10 scale. */}
+          <MaskHeatmap title="PPG IR SNR" unit="SNR"
+            stops={SNR_STOPS} domain={[0, 10]} fmt={(v) => (+v).toFixed(1)}
+            mode={`snr:${streaming}`}
+            sensors={[1, 2, 3, 4].map(i => ({
+              ...PPG_POS[i], label: `IR${i}`,
+              value: irSnr(i),
+              live: (latestData.ppgMask & (1 << (i - 1))) !== 0,
             }))} />
         </>
       ) : viewMode === 'split' ? (

@@ -128,9 +128,10 @@ body {
   grid-column: span 3;
 }
 
-/* Visualized view: three mask heatmaps side by side */
+/* Visualized view: four mask heatmaps side by side
+   (skin temp, humidity, pressure, PPG IR SNR) */
 .viz-card {
-  grid-column: span 4;
+  grid-column: span 3;
 }
 
 /* Telemetry + chart controls in ONE slim row */

@@ -6,6 +6,41 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-02 (cont. 4) — along-ring gradient field, SNR map, traffic-light ramp, strapless outline
+
+- Heatmap field rebuilt twice on user feedback, landing on PIECEWISE-
+  LINEAR interpolation between angularly adjacent sensors around the ring
+  hub (circular, HUB exported from maskGeometry). Each sensor anchors its
+  stretch of ring and its influence spreads ALL THE WAY to the neighbor
+  sensors — whole zones shade, no blob around the dot: H3 (upper right)
+  rising warms nasal bridge AND right; H2 warms right AND chin; H1 warms
+  left AND chin. (First attempt was angular IDW — still re-concentrated
+  around the sensors; user clarified and it became linear.) Euclidean IDW
+  before that collapsed most of the ring to the global mean.
+  Verified with a synthetic STATUS (H1=30 / H2=90 / H3=60 on the 30-100
+  scale): heat rises monotonically left(0.48) -> nasal(0.89) ->
+  rightUp(1.65) -> rightLo(2.69) -> chinR(3.67) and cools toward H1
+  (chinL 1.1) — a continuous gradient along the ring.
+- NEW 4th map: PPG IR SNR (viz-card span 4 -> 3). Per-site quality =
+  RMS(iAc) / (RMS(first difference)/sqrt2) over the buffer — the pulse
+  (1-3 Hz) barely reaches sample-to-sample steps at 100 Hz, broadband
+  noise dominates them. INVERTED ramp (red at 0, green high), domain
+  0-10 (~1 = white-noise floor, >5 = solid pulse). Demo: all sites 16.5
+  -> clamped green (clean synthetic pulse, as expected).
+- Ramp is traffic-light: green (#22c55e) safe -> yellow -> PURE red
+  (#ff0000) alarm, per user ("경각심"); green low end replaced blue
+  ("안전 표시색"). One shared THERMAL_STOPS for the three physical maps.
+- Sensor markers: plain gray (#9ca3af), no outline; dead sensors become a
+  translucent gray ghost. The field carries the value, the dot only marks
+  position.
+- FFC/mux strap removed from the drawn outline (no face contact, no
+  sensors); first cut left a slanted top — leveled to a clean horizontal
+  close at y=65. MASK_VIEWBOX tightened to y 61..151. The U1/U2 tab
+  survives (it belongs to the hole polygon side). MASK_CELLS regenerate
+  automatically; SitePin/SiteLegend/maps share the strapless profile.
+
+---
+
 ## Session 2026-08-02 (cont. 3) — fixed physical heat scales + named zones
 
 - All three Visualized maps now share ONE thermal ramp (blue -> yellow ->

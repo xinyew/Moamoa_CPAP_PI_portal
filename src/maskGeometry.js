@@ -24,7 +24,7 @@
  */
 
 export const MASK_OUTLINE = [
-  [86.2, 64.9], [90, 70], [91.7, 72.3], [93.4, 74.6], [95, 76.9],
+  [86.2, 65], [90, 70], [91.7, 72.3], [93.4, 74.6], [95, 76.9],
   [96.5, 79.2], [98, 81.5], [99.5, 83.8], [100.9, 86.1], [102.3, 88.4],
   [103.7, 90.7], [105.1, 93], [106.5, 95.3], [107.8, 97.6], [109.2, 100],
   [110.7, 102.3], [112.1, 104.8], [113.6, 107.2], [115, 109.7],
@@ -55,7 +55,10 @@ export const MASK_OUTLINE = [
   [47.9, 88.3], [48.6, 87.2], [49.3, 86], [50, 84.8], [50.7, 83.7],
   [51.4, 82.5], [52.2, 81.3], [52.9, 80.2], [53.7, 79], [54.4, 77.8],
   [55.2, 76.6], [56, 75.4], [56.9, 74.2], [57.7, 73], [58.6, 71.8],
-  [59.6, 70.6], [63.3, 65.8], [64, 63.9], [64.9, 40.9], [83, 40], [86, 43],
+  // The FFC/mux strap ([64.9,40.9] [83,40] [86,43]) is intentionally NOT
+  // part of the drawn profile (user request): it carries no face contact
+  // and no sensors, so the ring closes flat right below it.
+  [59.6, 70.6], [63.3, 65],
 ];
 
 // Interior cutout (the mask ring's central hole). The dip at x 70..80 /
@@ -88,7 +91,8 @@ const toPath = (poly) =>
 // and a stroke draws both edges.
 export const MASK_PATH_D = `${toPath(MASK_OUTLINE)} ${toPath(MASK_HOLE)}`;
 
-export const MASK_VIEWBOX = { x: 28.5, y: 38.5, w: 93, h: 112 };
+// Top edge sits just above the strapless profile (was 38.5 with the strap)
+export const MASK_VIEWBOX = { x: 28.5, y: 61, w: 93, h: 90 };
 
 // Footprint centers (mm), keyed by the portal's DISPLAYED indices.
 export const BARO_POS = {   // MS5611 contact pressure, keys match p1..p4
@@ -124,7 +128,8 @@ export const PPG_POS = {    // MAX30101, for the future PPG visualization
 //   D: p3, sht2, tmp2
 // Per the user's mockup the dividers are SPOKES radiating from the ring
 // hub, and the letters sit inside the central cutout near their zone.
-const HUB = { x: 75, y: 110 };
+// Exported: the heatmap interpolates ALONG the ring by hub angle.
+export const HUB = { x: 75, y: 110 };
 export const REGIONS = [
   { id: 'A', name: 'Nasal bridge', label: { x: 75, y: 91 } },
   { id: 'B', name: 'Left',         label: { x: 56, y: 108 } },

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MASK_PATH_D, MASK_VIEWBOX, MASK_CELLS, GRID_STEP, REGIONS, REGION_DIVIDERS } from './maskGeometry';
+import { MASK_PATH_D, MASK_VIEWBOX, MASK_CELLS, GRID_STEP, REGIONS, REGION_DIVIDERS, HUB } from './maskGeometry';
 
 /*
  * One heatmap of the mask flex board: inverse-distance-weighted field
@@ -26,22 +26,34 @@ const makeRamp = (stops) => {
   };
 };
 
-// IDW (power 2) over the live sensors; d clamped so a cell on top of a
-// sensor takes exactly its value.
-const idw = (cx, cy, pts) => {
-  let num = 0, den = 0;
-  for (const p of pts) {
-    const d2 = Math.max((cx - p.x) ** 2 + (cy - p.y) ** 2, 1);
-    const w = 1 / d2;
-    num += w * p.value;
-    den += w;
-  }
-  return num / den;
+// Field ALONG the ring: piecewise-LINEAR interpolation between angularly
+// adjacent sensors (circular). A sensor is the anchor point of its stretch
+// of ring, and its influence spreads all the way to the neighboring
+// sensors — the whole zones between them shade, not a blob around the dot.
+// e.g. H3 (upper right) rising warms nasal bridge AND the right arm; H2
+// (lower right) rising warms right AND chin; H1 (left) warms left AND
+// chin. IDW variants could not express this: they re-concentrate around
+// the sensor and flatten everything else toward the mean.
+const angOf = (x, y) => Math.atan2(y - HUB.y, x - HUB.x);
+const idw = (cx, cy, pts) => {  // pts sorted ascending by .ang
+  const n = pts.length;
+  if (n === 1) return pts[0].value;
+  const a = angOf(cx, cy);
+  let i = pts.findIndex(p => p.ang > a);
+  const next = i === -1 ? pts[0] : pts[i];
+  const prev = i <= 0 ? pts[n - 1] : pts[i - 1];
+  let span = next.ang - prev.ang;
+  if (span <= 0) span += 2 * Math.PI;          // wrap across ±180°
+  let t = a - prev.ang;
+  if (t < 0) t += 2 * Math.PI;
+  return prev.value + (next.value - prev.value) * (t / span);
 };
 
 const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain }) => {
   const ramp = makeRamp(stops);
-  const live = sensors.filter(s => s.live && s.value != null && !isNaN(s.value));
+  const live = sensors.filter(s => s.live && s.value != null && !isNaN(s.value))
+    .map(s => ({ ...s, ang: angOf(s.x, s.y) }))
+    .sort((a, b) => a.ang - b.ang);
 
   // FIXED physical domain when given (e.g. skin 34-41 °C): color then means
   // the same thing on every glance and across sessions; out-of-range values
@@ -116,10 +128,11 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain 
                 stroke="rgba(160,220,255,0.45)" strokeWidth="0.7" />
           {sensors.map(s => (
             <g key={s.label}>
+              {/* plain gray markers, no outline (user request): the dot only
+                  says "a sensor is here" — the FIELD carries the value.
+                  A dead sensor fades to a translucent ghost. */}
               <circle cx={s.x} cy={s.y} r="2.1"
-                      fill={s.live && s.value != null ? (s.color || '#ffffff') : 'none'}
-                      stroke={s.live && s.value != null ? '#05050a' : 'rgba(255,255,255,0.4)'}
-                      strokeWidth="0.6" strokeDasharray={s.live && s.value != null ? undefined : '1 1'} />
+                      fill={s.live && s.value != null ? '#9ca3af' : 'rgba(156,163,175,0.25)'} />
               <text x={s.x} y={s.y - 3.4} textAnchor="middle" fontSize="4"
                     fontWeight="700" fill="#ffffff" stroke="#05050a"
                     strokeWidth="0.8" paintOrder="stroke">
