@@ -75,21 +75,21 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain,
 
   return (
     <div className="glass-card viz-card chart-card">
-      <div className="chart-head" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-          {title} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>({unit})</span>
+      {/* Title CENTERED and doubled. The card is too narrow for a big title
+          plus corner controls on one line, so ABS/Δ (and the demo inputs)
+          live on a centered second line instead of overlapping the title. */}
+      <div className="chart-head" style={{ justifyContent: 'center' }}>
+        <h2 style={{ fontSize: '1.7rem', whiteSpace: 'nowrap', textAlign: 'center' }}>
+          {title} <span style={{ color: 'var(--text-dim)', fontWeight: 400, fontSize: '1rem' }}>({unit})</span>
         </h2>
-        {/* top-right corner: per-map controls (ABS/Δ + Tare), plus the
-            no-sensor warning when the map has nothing live to draw */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      </div>
+      {(controls || footer || live.length === 0) && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center',
+                      gap: '0.8rem', flexWrap: 'wrap', marginBottom: '0.2rem' }}>
           {live.length === 0 && (
             <span style={{ fontSize: '0.72rem', color: 'var(--accent-amber)' }}>no live sensors</span>
           )}
           {controls}
-        </div>
-      </div>
-      {footer && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.2rem' }}>
           {footer}
         </div>
       )}
