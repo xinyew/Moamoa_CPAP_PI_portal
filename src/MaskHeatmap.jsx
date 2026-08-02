@@ -88,6 +88,11 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain,
           {controls}
         </div>
       </div>
+      {footer && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.2rem' }}>
+          {footer}
+        </div>
+      )}
       <div className="chart-body" style={{ display: 'flex', flexDirection: 'column' }}>
         <svg viewBox={`${x} ${y} ${w} ${h}`} style={{ flex: 1, minHeight: 0, width: '100%' }}
              preserveAspectRatio="xMidYMid meet">
@@ -144,12 +149,19 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain,
           {/* one path strokes both the outer profile and the hole edge */}
           <path d={MASK_PATH_D} fill="none"
                 stroke="rgba(160,220,255,0.45)" strokeWidth="0.7" />
-          {/* plain gray dots, no labels: the dot only says "a sensor is
-              here" — the reading lives at the zone center. A dead sensor
-              fades to a translucent ghost. */}
+          {/* gray dot + ID tag per sensor (T1/H2/...): the reading lives at
+              the zone center, the tag says which sensor sits where. A dead
+              sensor fades to a translucent ghost. */}
           {sensors.map(s => (
-            <circle key={s.label} cx={s.x} cy={s.y} r="2.1"
-                    fill={s.live && s.value != null ? '#9ca3af' : 'rgba(156,163,175,0.25)'} />
+            <g key={s.label}>
+              <circle cx={s.x} cy={s.y} r="2.1"
+                      fill={s.live && s.value != null ? '#9ca3af' : 'rgba(156,163,175,0.25)'} />
+              <text x={s.x} y={s.y - 3.2} textAnchor="middle" fontSize="3.5"
+                    fontWeight="700" fill="#cdd6f4" stroke="#05050a"
+                    strokeWidth="0.7" paintOrder="stroke">
+                {s.label}
+              </text>
+            </g>
           ))}
         </svg>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
@@ -164,7 +176,6 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain,
             {(domain || live.length) ? fmt(hi) : '--'}
           </span>
         </div>
-        {footer}
       </div>
     </div>
   );

@@ -345,25 +345,26 @@ button.sensing.off {
 .viz-inputs {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  margin-top: 0.3rem;
+  justify-content: center;
+  gap: 0.55rem;
   flex-wrap: wrap;
 }
 .viz-inputs label {
   display: flex;
   align-items: center;
-  gap: 0.2rem;
-  font-size: 0.66rem;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 700;
   color: var(--text-dim);
 }
 .viz-inputs input {
-  width: 3.1rem;
+  width: 3.8rem;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-glass);
   border-radius: 0.4rem;
   color: #e8ecf5;
-  padding: 0.14rem 0.3rem;
-  font-size: 0.7rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.95rem;
   font-variant-numeric: tabular-nums;
 }
 .viz-inputs input:focus { outline: 1px solid var(--accent-green); }
