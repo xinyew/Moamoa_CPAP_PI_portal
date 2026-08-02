@@ -156,7 +156,7 @@ const MiniChart = ({ title, dataKey, color, data, latest, unit, xAxis, tooltipFm
           <YAxis stroke="var(--text-dim)" fontSize={10} domain={['auto', 'auto']} width={44} />
           <Tooltip contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle}
                    labelFormatter={tooltipFmt} isAnimationActive={false} />
-          <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2} dot={dot ?? markDot} activeDot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1} dot={dot ?? markDot} activeDot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -582,7 +582,7 @@ const Dashboard = () => {
             {keys.map((k, idx) => (
               (latestData.ppgMask & (1 << idx)) !== 0 &&
               <Line key={k} type="monotone" dataKey={ppgKey(k)} stroke={colors[idx]}
-                    strokeWidth={2} activeDot={false}
+                    strokeWidth={1} activeDot={false}
                     dot={makeDot(idx === firstLive, (ppgYield[idx + 1] ?? 1) < SPARSE_YIELD)}
                     name={`S${idx + 1}`} isAnimationActive={false} />
             ))}
@@ -839,7 +839,7 @@ const Dashboard = () => {
                   <Legend wrapperStyle={{ fontSize: 10 }} iconSize={8} height={14} />
                   {liveBaro.map((b, idx) => (
                     <Line key={b} type="monotone" dataKey={baroKey(`p${b + 1}`)} stroke={BARO_COLORS[b]}
-                          strokeWidth={2} dot={idx === 0 ? markDot : false} activeDot={false}
+                          strokeWidth={1} dot={idx === 0 ? markDot : false} activeDot={false}
                           name={`P${b + 1}`} isAnimationActive={false} />
                   ))}
                 </LineChart>
