@@ -1,5 +1,5 @@
 import React from 'react';
-import { MASK_PATH_D, MASK_VIEWBOX, MASK_CELLS, GRID_STEP, REGIONS, REGION_DIVIDERS, HUB } from './maskGeometry';
+import { MASK_PATH_D, MASK_VIEWBOX, MASK_CELLS, GRID_STEP, REGIONS, REGION_DIVIDERS, HUB, regionOf } from './maskGeometry';
 
 /*
  * One heatmap of the mask flex board: inverse-distance-weighted field
@@ -115,30 +115,41 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain 
                     strokeDasharray="2 1.4" />
             ))}
           </g>
-          {/* zone names spelled out (user request — not just letters) */}
-          {REGIONS.map(r => (
-            <text key={r.id} x={r.label.x} y={r.label.y} textAnchor="middle"
-                  fontSize="3.6" fontWeight="800" fill="rgba(255,255,255,0.92)"
-                  stroke="#05050a" strokeWidth="0.8" paintOrder="stroke">
-              {r.name}
-            </text>
-          ))}
+          {/* zone name + that zone's sensor reading, both at the ZONE CENTER
+              (user request): the number belongs to the region the sensor
+              represents, not to the dot. Zones without a sensor of this
+              kind (e.g. nasal bridge has no SHT/TMP) just show the name. */}
+          {REGIONS.map(r => {
+            const rs = sensors.filter(s => regionOf(s.x, s.y) === r.id);
+            const txt = rs.length
+              ? rs.map(s => (s.live && s.value != null ? fmt(s.value) : 'off')).join(' · ')
+              : null;
+            return (
+              <g key={r.id}>
+                <text x={r.label.x} y={r.label.y} textAnchor="middle"
+                      fontSize="3.6" fontWeight="800" fill="rgba(255,255,255,0.92)"
+                      stroke="#05050a" strokeWidth="0.8" paintOrder="stroke">
+                  {r.name}
+                </text>
+                {txt && (
+                  <text x={r.label.x} y={r.label.y + 5.4} textAnchor="middle"
+                        fontSize="4.6" fontWeight="800" fill="#ffffff"
+                        stroke="#05050a" strokeWidth="0.9" paintOrder="stroke">
+                    {txt}
+                  </text>
+                )}
+              </g>
+            );
+          })}
           {/* one path strokes both the outer profile and the hole edge */}
           <path d={MASK_PATH_D} fill="none"
                 stroke="rgba(160,220,255,0.45)" strokeWidth="0.7" />
+          {/* plain gray dots, no labels: the dot only says "a sensor is
+              here" — the reading lives at the zone center. A dead sensor
+              fades to a translucent ghost. */}
           {sensors.map(s => (
-            <g key={s.label}>
-              {/* plain gray markers, no outline (user request): the dot only
-                  says "a sensor is here" — the FIELD carries the value.
-                  A dead sensor fades to a translucent ghost. */}
-              <circle cx={s.x} cy={s.y} r="2.1"
-                      fill={s.live && s.value != null ? '#9ca3af' : 'rgba(156,163,175,0.25)'} />
-              <text x={s.x} y={s.y - 3.4} textAnchor="middle" fontSize="4"
-                    fontWeight="700" fill="#ffffff" stroke="#05050a"
-                    strokeWidth="0.8" paintOrder="stroke">
-                {s.label} {s.live && s.value != null ? fmt(s.value) : 'off'}
-              </text>
-            </g>
+            <circle key={s.label} cx={s.x} cy={s.y} r="2.1"
+                    fill={s.live && s.value != null ? '#9ca3af' : 'rgba(156,163,175,0.25)'} />
           ))}
         </svg>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
