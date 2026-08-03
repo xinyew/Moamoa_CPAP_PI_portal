@@ -26,10 +26,17 @@ const PPG_IR_COLORS    = SITE_COLORS;
 const PPG_GREEN_COLORS = SITE_COLORS;
 const BARO_COLORS      = SITE_COLORS;
 
-// SPLIT view colors follow the CHANNEL instead: the columns already encode
-// the site, so within a row every Red chart is red, IR pink, Green green,
-// pressure white — the row reads as one quantity at a glance.
-const CH_COLORS = { p: '#f2f5ff', r: '#ff5252', i: '#ff4db8', g: '#2ee880' };
+// SPLIT view: HUE encodes the channel (pressure white/gray, Red red, IR
+// pink, Green green) and SHADE encodes the site — 1 is the strongest, each
+// next site steps paler. So a row still reads as one quantity while a card
+// also says which site it is. Every step stays light enough to carry on the
+// near-black surface (paler here means less chroma, never darker).
+const CH_RAMPS = {
+  p: ['#ffffff', '#dfe4ee', '#bcc4d4', '#98a1b4'],
+  r: ['#ff2b2b', '#ff6b6b', '#ff9d9d', '#ffc9c9'],
+  i: ['#ff2d95', '#ff6fb4', '#ff9fcd', '#ffcae4'],
+  g: ['#00d95f', '#4ade80', '#86efac', '#bdf5d1'],
+};
 
 // One thermal ramp for every heatmap: coldest = blue, hottest = red, with
 // a fixed PHYSICAL domain per quantity so color always means the same
@@ -41,7 +48,7 @@ const THERMAL_STOPS = ['#22c55e', '#facc15', '#ff0000'];
 const SNR_STOPS = ['#ff0000', '#facc15', '#22c55e'];
 
 // Tiny mask-ring locator: shows WHERE on the flex a sensor physically sits
-// (same outline + coordinates as the Visualized view). The dot takes the
+// (same outline + coordinates as the Heatmap view). The dot takes the
 // plot's own line color so the pin reads as "this trace, right here".
 const SitePin = ({ pos, color = '#ffe14d' }) => {
   const { x, y, w, h } = MASK_VIEWBOX;
@@ -196,7 +203,7 @@ const Dashboard = () => {
   const [baroDelta, setBaroDelta] = useState(false);
   const [baroBase, setBaroBase] = useState(null);     // {p1..p4} at tare time
 
-  // Demo sandbox for the Visualized maps: while demo streams, any sensor
+  // Demo sandbox for the Heatmap maps: while demo streams, any sensor
   // can be overridden with a typed value to see exactly how the field
   // reacts. Overrides replace the FINAL displayed value (bypassing
   // matching/Δ — what you type is what the map shows) and clear when demo
@@ -447,7 +454,7 @@ const Dashboard = () => {
     </div>
   );
 
-  // Corner controls for the Visualized maps — same ABS/Δ pattern, one
+  // Corner controls for the Heatmap maps — same ABS/Δ pattern, one
   // independent instance per quantity.
   const vizCorner = (isDelta, setDelta, doTare, what) => (
     <div className="segmented">
@@ -516,7 +523,7 @@ const Dashboard = () => {
       {/* Telemetry readouts: one LARGE type size for labels, icons and
           values alike. All sensor numbers are displayed sensor-matched
           (group mean + own change). The SHT40's own air temp rides small
-          under RH — context, not a primary reading. In the Visualized view
+          under RH — context, not a primary reading. In the Heatmap view
           the RH/skin readouts drop out (the maps carry them); battery and
           SD have no map, so they stay. */}
       {viewMode !== 'viz' && (
@@ -538,7 +545,7 @@ const Dashboard = () => {
           </div>
         </>
       )}
-      {/* Chart controls only where charts exist: the Visualized view has no
+      {/* Chart controls only where charts exist: the Heatmap view has no
           time series (Window / RAW-AC are meaningless there) and pressure
           ABS/Δ now lives on the pressure map itself. */}
       {viewMode !== 'viz' && (
@@ -669,7 +676,7 @@ const Dashboard = () => {
             </button>
           </div>
 
-          {/* Overlay / Split / Visualized — stacked, pick one (always available) */}
+          {/* Overlay / Split / Heatmap — stacked, pick one (always available) */}
           <div className="segmented vertical">
             <button className={`segment ${viewMode === 'overlay' ? 'active' : ''}`} onClick={() => setViewMode('overlay')}>
               <Layers size={16} style={{ marginRight: '0.5rem' }} />
@@ -681,7 +688,7 @@ const Dashboard = () => {
             </button>
             <button className={`segment ${viewMode === 'viz' ? 'active' : ''}`} onClick={() => setViewMode('viz')}>
               <Map size={16} style={{ marginRight: '0.5rem' }} />
-              Visualized
+              Heatmap
             </button>
           </div>
 
@@ -772,7 +779,7 @@ const Dashboard = () => {
 
       {viewMode === 'viz' ? (
         <>
-          {/* Visualized: IDW heatmaps over the real mask flex outline with
+          {/* Heatmap: fields over the real mask flex outline with
               the real sensor footprint positions (see maskGeometry.js for
               provenance). Skin temp, humidity, pressure; PPG viz later. */}
           {/* Fixed physical scales (user spec): skin 34-41 °C, RH 30-100 %,
@@ -802,7 +809,7 @@ const Dashboard = () => {
               live: (latestData.shtMask & (1 << (i - 1))) !== 0,
             }))} />
           <MaskHeatmap title="Pressure" unit={baroUnit}
-            stops={THERMAL_STOPS} domain={baroDelta && baroBase ? undefined : [755, 900]}
+            stops={THERMAL_STOPS} domain={baroDelta && baroBase ? undefined : [730, 750]}
             fmt={(v) => (+v).toFixed(2)}
             mode={`${baroDelta}:${streaming}:${ovSig('p', 4)}`}
             footer={demoInputs('p', ['P1', 'P2', 'P3', 'P4'])}
@@ -838,8 +845,8 @@ const Dashboard = () => {
               physically sits. */}
           {liveBaro.map(b => (
             <MiniChart key={`p${b + 1}`} lane={b} title={`Pressure ${b + 1}`} dataKey={baroKey(`p${b + 1}`)}
-                       color={CH_COLORS.p} data={baroData} xAxis={timeAxisProps} tooltipFmt={fmtElapsed}
-                       indicator={<SitePin pos={BARO_POS[b + 1]} color={CH_COLORS.p} />}
+                       color={CH_RAMPS.p[b]} data={baroData} xAxis={timeAxisProps} tooltipFmt={fmtElapsed}
+                       indicator={<SitePin pos={BARO_POS[b + 1]} color={CH_RAMPS.p[b]} />}
                        latest={fmt1(baroLatest(b + 1) ?? undefined)} unit={baroUnit} />
           ))}
           {[
@@ -850,9 +857,9 @@ const Dashboard = () => {
             livePpg.map(s => (
               <MiniChart key={`${ch}${s + 1}`} lane={s}
                          title={`PPG ${s + 1} ${label}${ppgAc ? ' (AC)' : ''}`} dataKey={ppgKey(`${ch}${s + 1}`)}
-                         color={CH_COLORS[ch]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
+                         color={CH_RAMPS[ch][s]} data={ppgData} xAxis={ppgAxisProps} tooltipFmt={ppgTooltip.labelFormatter}
                          dot={makeDot(true, (ppgYield[s + 1] ?? 1) < SPARSE_YIELD)}
-                         indicator={<SitePin pos={PPG_POS[s + 1]} color={CH_COLORS[ch]} />}
+                         indicator={<SitePin pos={PPG_POS[s + 1]} color={CH_RAMPS[ch][s]} />}
                          latest={fmtCount(latestData[ppgKey(`${ch}${s + 1}`)])} unit="counts" />
             ))
           )}

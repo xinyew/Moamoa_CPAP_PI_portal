@@ -6,6 +6,24 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-03 — per-site channel ramps, Heatmap rename, pressure 730-750
+
+- Split view: CH_COLORS (one color per channel) -> CH_RAMPS (4 shades per
+  channel). Hue = channel, shade = site, site 1 strongest -> site 4
+  palest; paler means less chroma, never darker, so every step stays
+  legible on #05050a. Pressure white->gray, Red, IR pink, Green.
+  Both the chart trace and its SitePin dot take the same shade.
+- "Visualized" renamed "Heatmap" (button + comments); viewMode key stays
+  'viz' internally.
+- Pressure heat scale ceiling 900 -> 750 per user. NOTE: the old floor
+  755 sat ABOVE that ceiling, so the floor moved to 730 (~local ambient
+  in Atlanta) — the ramp now spans "no contact load" to 750. Flagged to
+  the user in case they want a different floor.
+Verified in demo: Heatmap button present / Visualized gone, pressure
+colorbar reads 730.00-750.00, all four ramps step correctly per site.
+
+---
+
 ## Session 2026-08-02 (cont.) — phone-landscape layout (S21)
 
 The phone APK was a half-scaled desktop; ratios recomputed for a ~390px
