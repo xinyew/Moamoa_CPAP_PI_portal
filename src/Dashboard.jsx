@@ -21,18 +21,16 @@ import { BARO_POS, SHT_POS, TMP_POS, PPG_POS, MASK_PATH_D, MASK_VIEWBOX } from '
 // pair dE 16.0 under deutan simulation, 28.2 normal vision, all >= 3:1
 // contrast. Sits above the dark-mode lightness band on purpose — neon.
 const SITE_COLORS = ['#2ee880', '#ff4db8', '#f0b000', '#00c4ea'];
-const PPG_RED_COLORS   = SITE_COLORS;
-const PPG_IR_COLORS    = SITE_COLORS;
-const PPG_GREEN_COLORS = SITE_COLORS;
-const BARO_COLORS      = SITE_COLORS;
 
-// SPLIT view: HUE encodes the channel (pressure white/gray, Red red, IR
-// pink, Green green) and SHADE encodes the site — 1 is the strongest, each
-// next site steps paler. So a row still reads as one quantity while a card
-// also says which site it is. Every step stays light enough to carry on the
-// near-black surface (paler here means less chroma, never darker).
+// Series colors, shared by SPLIT and OVERLAY: HUE encodes the channel
+// (pressure yellow, Red red, IR pink, Green green) and SHADE encodes
+// the site — 1 is the strongest, each next site steps paler. In split a row
+// reads as one quantity and the shade says which site; in overlay one chart
+// carries all four sites of a channel as four shades of its hue. Every step
+// stays light enough to carry on the near-black surface (paler here means
+// less chroma, never darker).
 const CH_RAMPS = {
-  p: ['#ffffff', '#dfe4ee', '#bcc4d4', '#98a1b4'],
+  p: ['#ffd400', '#ffe14d', '#ffeb8a', '#fff4c2'],
   r: ['#ff2b2b', '#ff6b6b', '#ff9d9d', '#ffc9c9'],
   i: ['#ff2d95', '#ff6fb4', '#ff9fcd', '#ffcae4'],
   g: ['#00d95f', '#4ade80', '#86efac', '#bdf5d1'],
@@ -64,7 +62,7 @@ const SitePin = ({ pos, color = '#ffe14d' }) => {
 
 // Overlay-chart legend: the ring with ALL four sensors of that kind, each
 // dot in its site color and numbered — maps line colors to face positions.
-const SiteLegend = ({ posMap }) => {
+const SiteLegend = ({ posMap, colors }) => {
   const { x, y, w, h } = MASK_VIEWBOX;
   return (
     <svg viewBox={`${x} ${y} ${w} ${h}`} preserveAspectRatio="xMidYMid meet"
@@ -74,7 +72,7 @@ const SiteLegend = ({ posMap }) => {
       {[1, 2, 3, 4].map(i => posMap[i] && (
         <g key={i}>
           <circle cx={posMap[i].x} cy={posMap[i].y} r="7.5"
-                  fill={SITE_COLORS[i - 1]} stroke="#05050a" strokeWidth="1.6" />
+                  fill={colors[i - 1]} stroke="#05050a" strokeWidth="1.6" />
           <text x={posMap[i].x} y={posMap[i].y + 3.4} textAnchor="middle"
                 fontSize="10" fontWeight="800" fill="#05050a">{i}</text>
         </g>
@@ -610,7 +608,7 @@ const Dashboard = () => {
         <h2 style={{ fontSize: '0.85rem' }}>{title}{ppgAc ? ' · AC' : ''}</h2>
         {/* center-top: where the four PPGs sit on the ring, in line colors */}
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-          <SiteLegend posMap={PPG_POS} />
+          <SiteLegend posMap={PPG_POS} colors={colors} />
         </div>
         <span className="num" style={{ fontSize: '0.9rem', fontWeight: 700 }}>
           {fmtCount(latestData[ppgKey(latestKey)])}
@@ -815,7 +813,7 @@ const Dashboard = () => {
             footer={demoInputs('p', ['P1', 'P2', 'P3', 'P4'])}
             controls={<div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>{baroControlGroup}</div>}
             sensors={[1, 2, 3, 4].map(i => ({
-              ...BARO_POS[i], label: `P${i}`, color: SITE_COLORS[i - 1],
+              ...BARO_POS[i], label: `P${i}`,
               value: baroLatest(i),
               live: liveBaro.includes(i - 1),
             }))} />
@@ -873,7 +871,7 @@ const Dashboard = () => {
               <h2 style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>Contact Pressure ×4 <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>({baroUnit})</span></h2>
               {/* center-top: where the four baros sit on the ring, in line colors */}
               <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-                <SiteLegend posMap={BARO_POS} />
+                <SiteLegend posMap={BARO_POS} colors={CH_RAMPS.p} />
               </div>
               <span className="chart-footnote">{baroBaseText}</span>
             </div>
@@ -886,7 +884,7 @@ const Dashboard = () => {
                   <Tooltip {...scalarTooltip} />
                   <Legend wrapperStyle={{ fontSize: 10 }} iconSize={8} height={14} />
                   {liveBaro.map((b, idx) => (
-                    <Line key={b} type="monotone" dataKey={baroKey(`p${b + 1}`)} stroke={BARO_COLORS[b]}
+                    <Line key={b} type="monotone" dataKey={baroKey(`p${b + 1}`)} stroke={CH_RAMPS.p[b]}
                           strokeWidth={1} dot={idx === 0 ? markDot : false} activeDot={false}
                           name={`P${b + 1}`} isAnimationActive={false} />
                   ))}
@@ -895,9 +893,9 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {ppgOverlayChart('PPG Red (×4)', 'var(--accent-red)', ['r1', 'r2', 'r3', 'r4'], PPG_RED_COLORS, 'r1')}
-          {ppgOverlayChart('PPG IR (×4)', 'var(--accent-violet)', ['i1', 'i2', 'i3', 'i4'], PPG_IR_COLORS, 'i1')}
-          {ppgOverlayChart('PPG Green (×4)', 'var(--accent-green)', ['g1', 'g2', 'g3', 'g4'], PPG_GREEN_COLORS, 'g1')}
+          {ppgOverlayChart('PPG Red (×4)', 'var(--accent-red)', ['r1', 'r2', 'r3', 'r4'], CH_RAMPS.r, 'r1')}
+          {ppgOverlayChart('PPG IR (×4)', 'var(--accent-violet)', ['i1', 'i2', 'i3', 'i4'], CH_RAMPS.i, 'i1')}
+          {ppgOverlayChart('PPG Green (×4)', 'var(--accent-green)', ['g1', 'g2', 'g3', 'g4'], CH_RAMPS.g, 'g1')}
         </>
       )}
     </div>

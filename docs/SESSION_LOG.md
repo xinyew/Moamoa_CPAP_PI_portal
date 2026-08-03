@@ -6,6 +6,22 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-03 (cont.) — overlay adopts the per-site ramps; pressure goes yellow
+
+- Overlay now uses the SAME CH_RAMPS as split: each overlay chart draws
+  its four sites as four shades of the channel hue (site 1 strongest).
+  The legacy SITE_COLORS aliases (PPG_*_COLORS / BARO_COLORS) are gone;
+  SiteLegend takes a `colors` prop so its numbered dots match the traces
+  exactly. SITE_COLORS itself survives only for the ring-legend fallback.
+- Pressure ramp switched from white->gray to YELLOW (user):
+  ['#ffd400','#ffe14d','#ffeb8a','#fff4c2'] — applies to overlay traces,
+  split cards, pins and legends alike since all read CH_RAMPS.p.
+Verified in demo (overlay): pressure strokes and legend dots =
+ffd400/ffe14d/ffeb8a/fff4c2, PPG green ramp on traces + dots; split
+shares the same constants.
+
+---
+
 ## Session 2026-08-03 — per-site channel ramps, Heatmap rename, pressure 730-750
 
 - Split view: CH_COLORS (one color per channel) -> CH_RAMPS (4 shades per
