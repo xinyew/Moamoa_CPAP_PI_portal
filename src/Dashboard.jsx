@@ -280,11 +280,21 @@ const Dashboard = () => {
   const mRh = (i) => { const v = latestData[`sht${i}h`]; return v == null ? v : +(v - mOff('rh', i)).toFixed(2); };
   const mAir = (i) => { const v = latestData[`sht${i}t`]; return v == null ? v : +(v - mOff('air', i)).toFixed(2); };
 
+  // TMP117 fallback: a skin-temp sensor that drops out (site 1 has a flaky
+  // solder joint that toggles it on/off) borrows the CO-LOCATED SHT40's air
+  // temperature — tmp_i and sht_i share a mux cluster, indices aligned, no
+  // SITE_MAP swap on these masks. The moment the TMP117 answers again its
+  // real reading takes over. Fallback values are marked with * in the UI.
+  const tmpLive = (i) => (latestData.tmpMask & (1 << (i - 1))) !== 0;
+  const shtLive = (i) => (latestData.shtMask & (1 << (i - 1))) !== 0;
+  const tmpFallback = (i) => !tmpLive(i) && shtLive(i);
+  const tmpDisp = (i) => (tmpLive(i) ? mTmp(i) : (shtLive(i) ? mAir(i) : null));
+
   // Tares capture the MATCHED values, so Δ is measured on the same scale
   // that is displayed. (No Tare button anymore — pressing Δ re-tares at the
   // current readings every time; ABS⇄Δ is the whole workflow.)
   const tareBaro = () => setBaroBase({ p1: mP(1), p2: mP(2), p3: mP(3), p4: mP(4) });
-  const tareTmp = () => setTmpBase({ 1: mTmp(1), 2: mTmp(2), 3: mTmp(3) });
+  const tareTmp = () => setTmpBase({ 1: tmpDisp(1), 2: tmpDisp(2), 3: tmpDisp(3) });
   const tareRh = () => setRhBase({ 1: mRh(1), 2: mRh(2), 3: mRh(3) });
 
   // A board switch is a new stream: previous tares are meaningless there.
@@ -480,7 +490,7 @@ const Dashboard = () => {
   const tmpVal = (i) => {
     const o = ov(`tmp${i}`);
     if (o != null) return o;
-    const v = mTmp(i);
+    const v = tmpDisp(i);
     return (tmpDelta && tmpBase && v != null) ? +(v - (tmpBase[i] ?? 0)).toFixed(2) : v;
   };
   const rhVal = (i) => {
@@ -554,7 +564,9 @@ const Dashboard = () => {
           <div className="strip-item big" title="TMP117 skin temperature, sensors 1/2/3, sensor-matched">
             <Thermometer color="var(--accent-amber)" size={22} />
             <span className="strip-label">Skin°C</span>
-            <span className="strip-value">{fmt1(mTmp(1))}/{fmt1(mTmp(2))}/{fmt1(mTmp(3))}</span>
+            <span className="strip-value">
+              {[1, 2, 3].map(i => fmt1(tmpDisp(i) ?? undefined) + (tmpFallback(i) ? '*' : '')).join('/')}
+            </span>
           </div>
         </>
       )}
@@ -835,7 +847,11 @@ const Dashboard = () => {
             sensors={[1, 2, 3].map(i => ({
               ...TMP_POS[i], label: `T${i}`,
               value: tmpVal(i),
-              live: (latestData.tmpMask & (1 << (i - 1))) !== 0,
+              // Either sensor of the cluster keeps the site in the field;
+              // `fallback` marks a borrowed air reading (dot stays ghosted,
+              // value gets a *).
+              live: tmpLive(i) || shtLive(i),
+              fallback: tmpFallback(i),
             }))} />
           <MaskHeatmap title="Humidity" unit={rhDelta && rhBase ? 'Δ %RH' : '%RH'}
             stops={THERMAL_STOPS} domain={rhDelta && rhBase ? undefined : [30, 100]}

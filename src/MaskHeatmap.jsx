@@ -134,7 +134,10 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain,
           {REGIONS.map(r => {
             const rs = sensors.filter(s => regionOf(s.x, s.y) === r.id);
             const txt = rs.length
-              ? rs.map(s => (s.live && s.value != null ? fmt(s.value) : 'off')).join(' · ')
+              // A * marks a substituted reading (e.g. dead TMP117 borrowing
+              // its cluster's SHT40 air temp) — data, but not this sensor's.
+              ? rs.map(s => (s.live && s.value != null
+                  ? fmt(s.value) + (s.fallback ? '*' : '') : 'off')).join(' · ')
               : null;
             return (
               <g key={r.id}>
@@ -161,8 +164,10 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain,
               sensor fades to a translucent ghost. */}
           {sensors.map(s => (
             <g key={s.label}>
+              {/* the dot reflects the PHYSICAL sensor: it stays ghosted while
+                  its value is a fallback from a neighbor in the cluster */}
               <circle cx={s.x} cy={s.y} r="2.1"
-                      fill={s.live && s.value != null ? '#9ca3af' : 'rgba(156,163,175,0.25)'} />
+                      fill={s.live && !s.fallback && s.value != null ? '#9ca3af' : 'rgba(156,163,175,0.25)'} />
               <text x={s.x} y={s.y - 3.2} textAnchor="middle" fontSize="3.5"
                     fontWeight="700" fill="#cdd6f4" stroke="#05050a"
                     strokeWidth="0.7" paintOrder="stroke">
@@ -201,4 +206,8 @@ export default React.memo(MaskHeatmap, (prev, next) =>
   prev.mode === next.mode &&
   prev.sensors.length === next.sensors.length &&
   prev.sensors.every((s, i) =>
-    s.live === next.sensors[i].live && close(s.value, next.sensors[i].value)));
+    s.live === next.sensors[i].live &&
+    // fallback flips can leave the value nearly unchanged (air ≈ skin after
+    // matching) — compare it explicitly so the * appears/disappears on time
+    !!s.fallback === !!next.sensors[i].fallback &&
+    close(s.value, next.sensors[i].value)));

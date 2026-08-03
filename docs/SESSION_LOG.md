@@ -6,6 +6,18 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-03 (cont.) — TMP117->SHT40 fallback ported; PI_sensor_v2.apk rebuilt
+
+rev2 c6f6722 (dead TMP117 borrows its cluster's SHT40 air temp, marked *)
+ported with the usual recipe: MaskHeatmap/index.css wholesale, Dashboard
+from rev2 + android delta re-applied (isNative RTT gate, CONNECT FAILED/
+NO DATA badge, strip-stale). useComm untouched (fallback is Dashboard-
+side; masks were already parsed). Multi-board stays stubbed natively.
+Tablet APK rebuilt: 4,031,809 bytes, sha256 484f4bbf... ->
+Downloads/PI_sensor_v2.apk. On-device verification pending as always.
+
+---
+
 ## Session 2026-08-03 (cont.) — latest UI ported to tablet; PI_sensor_v2.apk rebuilt
 
 Everything from the 2026-08-03 rev2 rounds carried onto android-tablet-app
