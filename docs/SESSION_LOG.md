@@ -6,6 +6,36 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-03 (cont.) — TMP117 dropout falls back to cluster SHT40 air temp
+
+The connected device's skin-temp sensor 1 has a flaky solder joint that
+toggles it on/off. When a TMP117 drops out (tmpMask bit clears) its site
+now borrows the CO-LOCATED SHT40's air temperature instead of going dark
+- tmp_i and sht_i share a mux cluster, indices aligned, no SITE_MAP swap
+on these masks. The moment the sensor answers again its real reading
+takes over. Display only; CSV stays raw.
+
+- Substituted readings are marked: zone value and strip Skin degC get a
+  trailing *, and the sensor dot stays GHOSTED (the dot reflects the
+  physical sensor, the number reflects the best available data).
+- Heatmap field keeps the site: live = tmpLive || shtLive.
+- Delta/tare paths (tareTmp, tmpVal) run on the displayed value, so
+  toggling Delta mid-fallback stays consistent.
+- MaskHeatmap memo now also compares the fallback flag (a flip can leave
+  the value within the 0.02 close() window and the * would lag).
+- Both sensors dead -> strip shows -- (was 0.0 via the sentinel).
+- Matching baselines were already dropout-safe: 0 is filtered as the
+  firmware no-data sentinel, so a dead tmp1 never poisons offsets.
+
+Verified on 5172 with a stubbed navigator.bluetooth board (STATUS frames,
+tmpMask toggling 0b110<->0b111): zone shows 24.8* ghost-dot while dead,
+36.5 solid when alive, swaps instantly both directions; strip mirrors it.
+(Stub gotcha: navigator.bluetooth is a readonly getter - plain assignment
+silently no-ops and the click hits the REAL chooser; use
+Object.defineProperty.)
+
+---
+
 ## Session 2026-08-03 (cont.) — multi-board: two devices connected, picker chips
 
 First slice of the multi-board port (handoff section 3), kept minimal on
