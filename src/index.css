@@ -567,3 +567,39 @@ h1 {
   .viz-inputs label { font-size: 0.72rem; }
   .viz-inputs input { width: 3rem; font-size: 0.8rem; padding: 0.15rem 0.25rem; }
 }
+
+/* Connected-board picker beside the title: one chip per board, the
+   active one filled; "+" adds another connection. */
+.dev-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  overflow: hidden;
+}
+button.dev-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border-glass);
+  border-radius: 2rem;
+  padding: 0.18rem 0.6rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+button.dev-chip.active {
+  background: var(--accent-blue);
+  color: #000;
+  border-color: var(--accent-blue);
+}
+button.dev-chip.add {
+  color: var(--accent-green);
+  border-color: var(--accent-green);
+  font-weight: 800;
+  padding: 0.18rem 0.5rem;
+}

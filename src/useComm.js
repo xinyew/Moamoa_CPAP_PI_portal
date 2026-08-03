@@ -310,26 +310,48 @@ export const useComm = () => {
   const demoBatch = () => {
     const now = Date.now();
     const pts = [];
+    // Per-site IR noise levels tuned so the SNR map spans its 0-10 scale
+    // (site 1 clean -> site 4 buried in noise).
+    const IR_NOISE = [700, 1200, 2100, 6200];
+    let tLast = 0;
     for (let j = 0; j < 4; j++) {
       const k = demoTickRef.current++;
       const t = k / 100; // seconds
+      tLast = t;
       const beat = Math.sin(2 * Math.PI * 1.2 * t) + 0.3 * Math.sin(2 * Math.PI * 2.4 * t + 1.2);
       const nz = () => (Math.random() - 0.5) * 60;
       const pt = { timestamp: k * TICK_MS, wallT: now };
       for (let s = 0; s < 4; s++) {
-        pt[`r${s + 1}`] = Math.round(52000 + s * 1000 + 1500 * beat + nz());
-        pt[`i${s + 1}`] = Math.round(98000 + s * 1000 + 2600 * beat + nz());
-        pt[`g${s + 1}`] = Math.round(23000 + s * 800 + 900 * beat + nz());
+        // DC offsets larger than the pulse amplitude, so the four sites
+        // ride as four separate traces on the shared overlay axis instead
+        // of one tangled band.
+        pt[`r${s + 1}`] = Math.round(52000 + s * 5000 + 1500 * beat + nz());
+        pt[`i${s + 1}`] = Math.round(98000 + s * 9000 + 2600 * beat
+          + (Math.random() - 0.5) * IR_NOISE[s]);
+        pt[`g${s + 1}`] = Math.round(23000 + s * 3500 + 900 * beat + nz());
       }
       for (let b = 0; b < 4; b++) {
-        // ~760 mmHg absolute with a slow breathing-like ripple
-        pt[`p${b + 1}`] = Math.round((760 + b * 0.4 + 3 * Math.sin(2 * Math.PI * 0.2 * t + b)) * 100) / 100;
+        // 730-740 mmHg band. Sensor matching wipes fixed per-site offsets
+        // from the DISPLAY, so the spread comes from slow phase-shifted
+        // ripples, which matching preserves.
+        pt[`p${b + 1}`] = Math.round((735 + 3.5 * Math.sin(2 * Math.PI * 0.05 * t + b * 1.6)) * 100) / 100;
       }
       pts.push(pt);
     }
+    // Env/skin telemetry: phase-shifted slow waves inside the requested
+    // demo bands (skin 35-38 degC, RH 30-80 %) — again spread-by-motion,
+    // not by fixed offsets, so it survives sensor matching.
+    const slow = (f, ph) => Math.sin(2 * Math.PI * f * tLast + ph);
     statusRef.current = {
-      sht1t: 24.5, sht1h: 45.2, sht2t: 24.8, sht2h: 44.9, sht3t: 25.1, sht3h: 45.6,
-      tmp1: 33.2, tmp2: 33.8, tmp3: 34.1,
+      sht1t: +(24.5 + 0.4 * slow(0.02, 0)).toFixed(2),
+      sht1h: +(55 + 22 * slow(0.03, 0)).toFixed(2),
+      sht2t: +(24.8 + 0.4 * slow(0.02, 2)).toFixed(2),
+      sht2h: +(55 + 22 * slow(0.03, 2.1)).toFixed(2),
+      sht3t: +(25.1 + 0.4 * slow(0.02, 4)).toFixed(2),
+      sht3h: +(55 + 22 * slow(0.03, 4.2)).toFixed(2),
+      tmp1: +(36.5 + 1.4 * slow(0.04, 0)).toFixed(2),
+      tmp2: +(36.5 + 1.4 * slow(0.04, 2.1)).toFixed(2),
+      tmp3: +(36.5 + 1.4 * slow(0.04, 4.2)).toFixed(2),
       vbat: 3850, maskPresent: true, sdOk: true, sensingOn: true,
       ppgRate: 100, baroRate: 100,
       ppgMask: 0b1111, baroMask: 0b1111, shtMask: 0b111, tmpMask: 0b111,
@@ -552,6 +574,9 @@ export const useComm = () => {
     filterAlpha, setFilterAlpha,
     streamStart,
     setSensing,
+    // Multi-board is web-only for now: the native bleTransport still holds a
+    // single link. Empty boards[] keeps the chip strip hidden.
+    boards: [], activeId: null, switchBoard: () => {},
     connectError, statusStale,
     commMode, setCommMode
   };

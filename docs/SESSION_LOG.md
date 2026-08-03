@@ -6,6 +6,26 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-03 (cont.) — latest UI ported to tablet; PI_sensor_v2.apk rebuilt
+
+Everything from the 2026-08-03 rev2 rounds carried onto android-tablet-app
+(same recipe: MaskHeatmap/maskGeometry/index.css wholesale, Dashboard from
+rev2 + android delta re-applied, useComm stays the android base):
+- per-site channel ramps (split + overlay), yellow pressure ramp,
+  Heatmap rename, pressure heat scale 730-750, demo generator bands and
+  separated overlay PPG traces.
+- MULTI-BOARD IS STUBBED natively: the rev2 Dashboard destructures
+  boards/activeId/switchBoard, so the android useComm exports
+  boards: [] / switchBoard noop — the chip strip simply never renders.
+  Real native multi-link needs bleTransport work (single-handle today);
+  deliberate deferral, noted for the future port.
+Tablet APK rebuilt: appId edu.gatech.kmm.pmask, label "PI sensor_v2",
+no orientation lock (verified via aapt2), 4,006,535 bytes,
+sha256 b539971a82339cd3... -> Downloads/PI_sensor_v2.apk.
+On-device verification pending as always (no tablet attached).
+
+---
+
 ## Session 2026-08-02 (cont.) — phone layout ported; phone APK rebuilt
 
 rev2's phone-landscape media query (plus the colorbar/title round it
