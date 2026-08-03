@@ -6,6 +6,34 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-03 (cont.) — ABS heatmaps: fixed scale -> live-centered window
+
+User report: pressure heatmap numbers update but the COLOR never moves in
+ABS mode (Delta was fine). Root cause, not a render bug: sensor matching
+collapses the four sites to within a fraction of a mmHg of each other, so
+on the fixed 730-750 scale every cell painted one clamped color; same
+class of freeze for Temperature (bench values sit below the 34-41 span).
+Delta worked because domain=undefined auto-fits.
+
+Fix (MaskHeatmap `adapt` prop): in ABS the scale is now a WINDOW centered
+on the live readings — at least `adapt` wide (pressure 2 mmHg, temp 1 C,
+RH 5 %RH), growing 1.6x with the live spread, capped at the fixed
+domain's span. Continuous by construction: a press widens the window
+smoothly instead of snapping between a zoomed and a frozen scale (the
+first cut used a 10%-crowding trigger and did exactly that snap — pressed
+hard enough it jumped BACK to the frozen 730-750; replaced). Colorbar
+always labels the window in use. SNR stays fixed 0-10 (quality metric).
+Delta path untouched.
+
+Verified with the stubbed board feeding DATA frames (matched sites ~740,
+phase-shifted wobble): idle window 739.1-741.1 with visible texture;
++2.5 mmHg press -> window 739.3-743.3, pressed zone deep red; release ->
+snaps home. A mid-test freeze turned out to be an HMR artifact (stale
+notification closure after editing MaskHeatmap) — full reload + fresh
+stub run confirmed the code path clean.
+
+---
+
 ## Session 2026-08-03 (cont.) — TMP117 dropout falls back to cluster SHT40 air temp
 
 The connected device's skin-temp sensor 1 has a flaky solder joint that

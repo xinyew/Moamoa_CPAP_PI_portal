@@ -827,7 +827,7 @@ const Dashboard = () => {
               (1200 mbar = 900 mmHg). Blue = low, red = high everywhere.
               Δ mode falls back to auto-fit around 0. */}
           <MaskHeatmap title="Temperature" unit={tmpDelta && tmpBase ? 'Δ °C' : '°C'}
-            stops={THERMAL_STOPS} domain={tmpDelta && tmpBase ? undefined : [34, 41]}
+            stops={THERMAL_STOPS} domain={tmpDelta && tmpBase ? undefined : [34, 41]} adapt={1}
             fmt={(v) => (+v).toFixed(1)}
             mode={`${tmpDelta}:${streaming}:${ovSig('tmp', 3)}`}
             footer={demoInputs('tmp', ['T1', 'T2', 'T3'])}
@@ -842,7 +842,7 @@ const Dashboard = () => {
               fallback: tmpFallback(i),
             }))} />
           <MaskHeatmap title="Humidity" unit={rhDelta && rhBase ? 'Δ %RH' : '%RH'}
-            stops={THERMAL_STOPS} domain={rhDelta && rhBase ? undefined : [30, 100]}
+            stops={THERMAL_STOPS} domain={rhDelta && rhBase ? undefined : [30, 100]} adapt={5}
             fmt={(v) => (+v).toFixed(1)}
             mode={`${rhDelta}:${streaming}:${ovSig('rh', 3)}`}
             footer={demoInputs('rh', ['H1', 'H2', 'H3'])}
@@ -853,7 +853,7 @@ const Dashboard = () => {
               live: (latestData.shtMask & (1 << (i - 1))) !== 0,
             }))} />
           <MaskHeatmap title="Pressure" unit={baroUnit}
-            stops={THERMAL_STOPS} domain={baroDelta && baroBase ? undefined : [730, 750]}
+            stops={THERMAL_STOPS} domain={baroDelta && baroBase ? undefined : [730, 750]} adapt={2}
             fmt={(v) => (+v).toFixed(2)}
             mode={`${baroDelta}:${streaming}:${ovSig('p', 4)}`}
             footer={demoInputs('p', ['P1', 'P2', 'P3', 'P4'])}

@@ -49,7 +49,7 @@ const idw = (cx, cy, pts) => {  // pts sorted ascending by .ang
   return prev.value + (next.value - prev.value) * (t / span);
 };
 
-const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain, footer }) => {
+const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain, adapt, footer }) => {
   const ramp = makeRamp(stops);
   const live = sensors.filter(s => s.live && s.value != null && !isNaN(s.value))
     .map(s => ({ ...s, ang: angOf(s.x, s.y) }))
@@ -61,13 +61,29 @@ const MaskHeatmap = ({ title, unit, sensors, stops, fmt, controls, mode, domain,
   // values, padded so sensor noise doesn't paint a full-scale rainbow when
   // the field is nearly uniform.
   let lo = 0, hi = 1;
-  if (domain) {
-    [lo, hi] = domain;
-  } else if (live.length) {
-    lo = Math.min(...live.map(s => s.value));
-    hi = Math.max(...live.map(s => s.value));
-    const pad = Math.max((hi - lo) * 0.15, 0.25);
-    lo -= pad; hi += pad;
+  if (domain) [lo, hi] = domain;
+  if (live.length) {
+    const vmin = Math.min(...live.map(s => s.value));
+    const vmax = Math.max(...live.map(s => s.value));
+    if (!domain) {
+      const pad = Math.max((vmax - vmin) * 0.15, 0.25);
+      lo = vmin - pad; hi = vmax + pad;
+    } else if (adapt != null) {
+      // A fixed physical scale FREEZES on live hardware: sensor matching
+      // collapses the sites to within a fraction of a unit of each other
+      // (and the local absolute value can sit outside the span entirely),
+      // so every cell paints one clamped color no matter how the numbers
+      // move. So in ABS the scale is a WINDOW centered on the live
+      // readings: at least `adapt` wide (the quantity's own units — noise
+      // can't paint a full-scale rainbow), growing with the live spread,
+      // capped at the fixed domain's span. Continuous by construction: a
+      // press widens the window smoothly instead of snapping between a
+      // zoomed and a frozen scale. The colorbar always labels the window
+      // actually in use, so color stays interpretable.
+      const mid = (vmin + vmax) / 2;
+      const s2 = Math.min(Math.max((vmax - vmin) * 1.6, adapt), hi - lo);
+      lo = mid - s2 / 2; hi = mid + s2 / 2;
+    }
   }
 
   const { x, y, w, h } = MASK_VIEWBOX;
