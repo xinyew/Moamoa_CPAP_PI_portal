@@ -6,6 +6,40 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-03 (cont.) — multi-board: two devices connected, picker chips
+
+First slice of the multi-board port (handoff section 3), kept minimal on
+purpose: EVERY connected board keeps its BLE link, ONE board drives the
+display, and switching is instant.
+- useComm: boardsRef registry (id -> {name, device, rxChar}), boards/
+  activeId state, switchBoard(). The multi-board gate lives in each
+  board's notification callback: `if (activeIdRef.current !== id) return`
+  — inactive boards' frames are dropped before parsing, so the whole
+  single-board pipeline (parser, matching, tares, charts) is untouched.
+- Switching = a new stream: resetDisplay() clears history/baselines/
+  telemetry; Dashboard resets all tares on activeId change and the
+  sensor-matching capture re-runs (activeId added to its effect deps).
+- 'T' tsync now broadcasts to every connected board each interval (each
+  keeps its own RC clock + SD log); 'P' sensing goes to the ACTIVE board.
+- Disconnect now drops only the active board; the next board takes over
+  via the gattserverdisconnected bookkeeping. Full-reload behavior
+  remains only for the RTT path.
+- UI: dev-chips beside the title — one chip per board (active filled),
+  "+" opens the chooser for another board. Re-picking a connected board
+  just activates it.
+- Two mishaps caught live: a hook-order crash that was really a stale
+  destructure patch (pattern didn't match the actual field order, so
+  `activeId` was undefined) — fixed by adding the fields for real; and
+  the HMR hook-order warning noise that came with editing hook lists.
+Verified with a stubbed navigator.bluetooth issuing two fake boards:
+chips render (newest active), both boards stream different vbat
+(1111/2222) SIMULTANEOUSLY and only the active board's value shows
+(2.22V -> switch -> 1.11V), active chip follows the switch, badge LIVE.
+NOT verified on real hardware (needs two powered boards); the android
+branch does not have this yet.
+
+---
+
 ## Session 2026-08-03 (cont.) — demo generator: separated PPG, requested heat bands
 
 - Overlay demo PPG traces no longer tangle: per-site DC offsets now exceed

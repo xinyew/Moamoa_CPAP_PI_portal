@@ -190,6 +190,9 @@ const Dashboard = () => {
     streamStart,
     commMode,
     setSensing,
+    boards,
+    activeId,
+    switchBoard,
     setCommMode
   } = useComm();
 
@@ -266,7 +269,7 @@ const Dashboard = () => {
     }, 500);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, isDemo]);
+  }, [isConnected, isDemo, activeId]);
 
   const mOff = (g, i) => (matchOff && matchOff[g] ? matchOff[g][i] || 0 : 0);
   const mP = (i) => { const v = latestData[`p${i}`]; return v == null ? v : +(v - mOff('p', i)).toFixed(2); };
@@ -280,6 +283,14 @@ const Dashboard = () => {
   const tareBaro = () => setBaroBase({ p1: mP(1), p2: mP(2), p3: mP(3), p4: mP(4) });
   const tareTmp = () => setTmpBase({ 1: mTmp(1), 2: mTmp(2), 3: mTmp(3) });
   const tareRh = () => setRhBase({ 1: mRh(1), 2: mRh(2), 3: mRh(3) });
+
+  // A board switch is a new stream: previous tares are meaningless there.
+  useEffect(() => {
+    setBaroDelta(false); setBaroBase(null);
+    setTmpDelta(false);  setTmpBase(null);
+    setRhDelta(false);   setRhBase(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
 
   // Keyboard shortcut: press M to drop an event marker (ignored in inputs)
   useEffect(() => {
@@ -640,7 +651,26 @@ const Dashboard = () => {
       {/* Header Section */}
       <header className="glass-card header-card">
         <div style={{ minWidth: 0 }}>
-          <h1>CPAP PI Dashboard - Full_v2</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
+            <h1>CPAP PI Dashboard - Full_v2</h1>
+            {boards.length > 0 && (
+              <div className="dev-chips" title="Connected boards — click to switch which one drives the display">
+                {boards.map((b, i) => (
+                  <button key={b.id}
+                          className={`dev-chip${b.id === activeId ? ' active' : ''}`}
+                          onClick={() => switchBoard(b.id)}
+                          title={`${b.name} — ${b.id === activeId ? 'active' : 'click to view'}`}>
+                    <Bluetooth size={12} />
+                    {`${i + 1} · ${b.name}`}
+                  </button>
+                ))}
+                {commMode === 'bluetooth' && !isDemo && (
+                  <button className="dev-chip add" onClick={connect}
+                          title="Connect another board">+</button>
+                )}
+              </div>
+            )}
+          </div>
           <p style={{ color: 'var(--text-dim)', fontSize: '0.95rem', margin: '2px 0 0 0', whiteSpace: 'nowrap' }}>
             4× PPG @ {latestData.ppgRate || 0}Hz · 4× Baro @ {latestData.baroRate || 0}Hz ·
             mask {latestData.maskPresent ? 'attached' : '—'} ·

@@ -61,7 +61,14 @@ export const useComm = () => {
   const isPausedRef = useRef(false);
   const deviceRef = useRef(null);
   const wsRef = useRef(null);
-  const rxCharRef = useRef(null);   // NUS RX, kept for periodic time re-sync
+  const rxCharRef = useRef(null);   // NUS RX of the ACTIVE board
+  // Multi-board: every connected board lives here; ONE board is "active"
+  // and drives the display. Inactive boards stay connected (their frames
+  // are dropped at the notification gate) so switching is instant.
+  const boardsRef = useRef(new Map());   // id -> {id, name, device, rxChar}
+  const [boards, setBoards] = useState([]);        // [{id, name}] for the UI
+  const [activeId, setActiveId] = useState(null);
+  const activeIdRef = useRef(null);
   const tsyncTimerRef = useRef(null);
   const demoTimerRef = useRef(null);
   const demoTickRef = useRef(0);
@@ -392,16 +399,42 @@ export const useComm = () => {
   // to wall clock and emits TSYNC records into the SD log (type 0x13 —
   // SD only, never on BLE, so nothing new to parse here). Harmless to
   // repeat; each board keeps its own clock.
+  // Time-sync goes to EVERY connected board — each keeps its own RC clock
+  // and its own SD log, active or not.
   const sendTimeSync = async () => {
-    const rx = rxCharRef.current;
-    if (!rx) return;
-    try {
-      const sync = new ArrayBuffer(9);
-      const sdv = new DataView(sync);
-      sdv.setUint8(0, 0x54); // 'T'
-      sdv.setBigUint64(1, BigInt(Date.now()), true);
-      await rx.writeValueWithoutResponse(sync);
-    } catch (e) { /* link may be mid-drop; next interval retries */ }
+    const sync = new ArrayBuffer(9);
+    const sdv = new DataView(sync);
+    sdv.setUint8(0, 0x54); // 'T'
+    sdv.setBigUint64(1, BigInt(Date.now()), true);
+    for (const b of boardsRef.current.values()) {
+      if (!b.rxChar) continue;
+      try { await b.rxChar.writeValueWithoutResponse(sync); }
+      catch (e) { /* link may be mid-drop; next interval retries */ }
+    }
+  };
+
+  // Fresh display state for "a different stream starts now": used on
+  // connect AND on switching boards, so one board's history, baselines
+  // and telemetry never bleed into another's.
+  const resetDisplay = () => {
+    lastDevTimeRef.current = null;
+    streamStartRef.current = null;
+    setStreamStart(null);
+    baselineRef.current = {};
+    filterStateRef.current = {};
+    statusRef.current = {};
+    setLatestData(emptyLatest);
+    setHistory([]);
+    isPausedRef.current = false;
+    setIsPaused(false);
+  };
+
+  const switchBoard = (id) => {
+    if (!boardsRef.current.has(id) || activeIdRef.current === id) return;
+    activeIdRef.current = id;
+    setActiveId(id);
+    rxCharRef.current = boardsRef.current.get(id).rxChar || null;
+    resetDisplay();
   };
 
   // 'P' + u8 on NUS RX: remote sensing enable. OFF puts the board in the
@@ -423,19 +456,26 @@ export const useComm = () => {
         filters: [{ namePrefix: 'KMM' }, { namePrefix: 'CPAP' }],
         optionalServices: [NUS_SERVICE_UUID]
       });
+      const id = device.id || `${device.name}-${boardsRef.current.size}`;
+
+      // Re-picking an already-connected board just makes it active.
+      if (boardsRef.current.has(id)) { switchBoard(id); return; }
 
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService(NUS_SERVICE_UUID);
       const characteristic = await service.getCharacteristic(NUS_TX_CHARACTERISTIC_UUID);
 
       deviceRef.current = device;
-      setIsConnected(true);
 
       await characteristic.startNotifications();
       let textBuffer = "";
       const decoder = new TextDecoder();
 
       characteristic.addEventListener('characteristicvaluechanged', (event) => {
+        // THE multi-board gate: only the active board feeds the display.
+        // Inactive boards stay connected and are simply dropped here, so
+        // switching is instant and costs no re-pairing.
+        if (activeIdRef.current !== id) return;
         const value = event.target.value;
         if (processBinaryFrame(value)) return;
         textBuffer += decoder.decode(value);
@@ -444,25 +484,45 @@ export const useComm = () => {
         for (let line of lines) processDataLine(line);
       });
 
-      // Ensure binary mode + sync the board's wall clock (one 'T'
-      // command retroactively timestamps the whole boot's SD log).
-      // The board free-runs on an uncalibrated RC clock, so keep
-      // re-syncing while connected — the offline SD reader
-      // drift-corrects between TSYNC records (protocol spec v2.1).
+      // Binary mode per board; wall-clock sync covers every board and the
+      // 10-min re-sync keeps their SD logs drift-corrected (spec v2.1).
+      let rx = null;
       try {
-        const rx = await service.getCharacteristic(NUS_RX_CHARACTERISTIC_UUID);
-        rxCharRef.current = rx;
+        rx = await service.getCharacteristic(NUS_RX_CHARACTERISTIC_UUID);
         await rx.writeValueWithoutResponse(new Uint8Array([0x42])); // 'B'
-        await sendTimeSync();
-        clearInterval(tsyncTimerRef.current);
-        tsyncTimerRef.current = setInterval(sendTimeSync, TSYNC_INTERVAL_MS);
-      } catch (e) { /* RX optional */ }
+      } catch (e) { rx = null; /* RX optional */ }
+
+      boardsRef.current.set(id, { id, name: device.name || 'board', device, rxChar: rx });
+      setBoards([...boardsRef.current.values()].map(b => ({ id: b.id, name: b.name })));
+      setIsConnected(true);
+
+      // Newest board becomes active (switchBoard also resets the display).
+      activeIdRef.current = null;
+      switchBoard(id);
+
+      await sendTimeSync();
+      clearInterval(tsyncTimerRef.current);
+      tsyncTimerRef.current = setInterval(sendTimeSync, TSYNC_INTERVAL_MS);
 
       device.addEventListener('gattserverdisconnected', () => {
-        clearInterval(tsyncTimerRef.current);
-        tsyncTimerRef.current = null;
-        rxCharRef.current = null;
-        setIsConnected(false);
+        boardsRef.current.delete(id);
+        setBoards([...boardsRef.current.values()].map(b => ({ id: b.id, name: b.name })));
+        if (activeIdRef.current === id) {
+          const next = boardsRef.current.keys().next();
+          if (!next.done) {
+            activeIdRef.current = null;
+            switchBoard(next.value);
+            return;
+          }
+          activeIdRef.current = null;
+          setActiveId(null);
+          rxCharRef.current = null;
+        }
+        if (boardsRef.current.size === 0) {
+          clearInterval(tsyncTimerRef.current);
+          tsyncTimerRef.current = null;
+          setIsConnected(false);
+        }
       });
 
     } catch (err) {
@@ -472,18 +532,19 @@ export const useComm = () => {
 
   const connect = () => {
     if (isDemo) toggleDemo(); // stop demo before a real connection
-    lastDevTimeRef.current = null;
-    streamStartRef.current = null; // restart the elapsed-time clock
-    setStreamStart(null);
-    baselineRef.current = {};      // clean AC baseline for the fresh start
-    setHistory([]);                // don't mix demo samples with real data
-    isPausedRef.current = false;   // never start a connection paused
-    setIsPaused(false);
-    if (commMode === 'rtt') connectRtt();
-    else connectBluetooth();
+    if (commMode === 'rtt') { resetDisplay(); connectRtt(); }
+    else connectBluetooth();  // resetDisplay happens inside switchBoard
   };
 
+  // Disconnect the ACTIVE board only; remaining boards keep their links and
+  // the next one takes over (the gattserverdisconnected handler does the
+  // bookkeeping). With no boards (RTT/legacy) keep the old full reload.
   const disconnect = () => {
+    const b = activeIdRef.current && boardsRef.current.get(activeIdRef.current);
+    if (b) {
+      try { b.device.gatt.disconnect(); } catch (e) { /* already down */ }
+      return;
+    }
     window.location.reload();
   };
 
@@ -545,6 +606,7 @@ export const useComm = () => {
     filterAlpha, setFilterAlpha,
     streamStart,
     setSensing,
+    boards, activeId, switchBoard,
     commMode, setCommMode
   };
 };
