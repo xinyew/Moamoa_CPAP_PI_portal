@@ -6,6 +6,24 @@ Newest session at the top. Keep appending; do not rewrite history.
 
 ---
 
+## Session 2026-08-03 (cont.) — demo generator: separated PPG, requested heat bands
+
+- Overlay demo PPG traces no longer tangle: per-site DC offsets now exceed
+  the pulse amplitude (r +5000/site, i +9000, g +3500), so the four sites
+  ride as four visibly separate traces (measured 22px apart on screen).
+- Heatmap demo bands per user: pressure 735±3.5 (730-740), skin temp
+  36.5±1.4 (35-38ish), RH 55±22 (30-80ish). KEY CONSTRAINT: sensor
+  matching wipes fixed per-site offsets from the display, so the spread
+  is built from slow PHASE-SHIFTED ripples (periods 20-50s), which
+  matching preserves. Values start near the group mean and fan out as
+  the phases separate.
+- IR SNR spread: per-site IR noise [700, 1200, 2100, 6200] targets
+  SNR roughly [6.5, 4.6, 2.9, 1.0] across the 0-10 scale. Not measured
+  live here — the hidden browser pane throttles the demo timer so the
+  50-sample SNR buffer never fills; foreground tabs fill it in ~1 s.
+
+---
+
 ## Session 2026-08-03 (cont.) — overlay adopts the per-site ramps; pressure goes yellow
 
 - Overlay now uses the SAME CH_RAMPS as split: each overlay chart draws
